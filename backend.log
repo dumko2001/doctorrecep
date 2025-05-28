@@ -1,0 +1,19 @@
+2025-05-28 20:08:51,725 - __main__ - INFO - ✅ Gemini client initialized successfully
+INFO:     Will watch for changes in these directories: ['/Users/sidharth/Documents/temp-mail/aug-doc/modified-doctor-recep copy 2']
+INFO:     Uvicorn running on http://0.0.0.0:3001 (Press CTRL+C to quit)
+INFO:     Started reloader process [83709] using WatchFiles
+2025-05-28 20:08:52,273 - __mp_main__ - INFO - ✅ Gemini client initialized successfully
+2025-05-28 20:08:52,706 - main - INFO - ✅ Gemini client initialized successfully
+INFO:     Started server process [83712]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:55533 - "GET /health HTTP/1.1" 200 OK
+2025-05-28 20:09:21,294 - watchfiles.main - INFO - 1 change detected
+2025-05-28 20:09:23,703 - watchfiles.main - INFO - 48 changes detected
+2025-05-28 20:09:24,118 - watchfiles.main - INFO - 1 change detected
+INFO:     127.0.0.1:55575 - "GET /health HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [83712]
+INFO:     Stopping reloader process [83709]

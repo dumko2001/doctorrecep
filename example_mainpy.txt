@@ -1,0 +1,317 @@
+"""
+Doctor Reception System - Python Backend
+Using FastAPI and Google Gemini 2.5 Flash Preview
+"""
+
+import os
+import logging
+import mimetypes
+from typing import List, Optional
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from dotenv import load_dotenv
+import httpx
+import tempfile
+import aiofiles
+from datetime import datetime
+from urllib.parse import urlparse
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="Doctor Reception API",
+    description="AI-powered consultation summary system using Gemini 2.5 Flash",
+    version="2.0.0"
+)
+
+# Configure CORS - keep it simple and working
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:3000")],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Initialize Gemini client
+try:
+    from google import genai
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    logger.info("✅ Gemini client initialized successfully")
+except Exception as e:
+    logger.error(f"❌ Failed to initialize Gemini client: {e}")
+    client = None
+
+# Pydantic models
+class TemplateConfig(BaseModel):
+    prescription_format: str = "structured"
+    language: str = "English"
+    tone: str = "professional"
+    sections: List[str] = [
+        "Chief Complaint", "History", "Examination",
+        "Diagnosis", "Treatment Plan", "Follow-up"
+    ]
+
+class GenerateSummaryRequest(BaseModel):
+    primary_audio_url: str
+    additional_audio_urls: Optional[List[str]] = []
+    image_urls: Optional[List[str]] = []
+    template_config: Optional[TemplateConfig] = TemplateConfig()
+    submitted_by: str = "doctor"
+
+class GenerateSummaryResponse(BaseModel):
+    summary: str
+    model: str
+    timestamp: str
+    files_processed: dict
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "gemini_client": "connected" if client else "disconnected",
+        "model": "gemini-2.5-flash-preview-05-20"
+    }
+
+def generate_prompt(template_config: TemplateConfig, submitted_by: str) -> str:
+    """Generate AI prompt based on template configuration"""
+    context_note = (
+        "This consultation was recorded by the doctor during patient visit."
+        if submitted_by == "doctor"
+        else "This consultation is being reviewed by the receptionist for final summary."
+    )
+
+    sections_text = ", ".join(template_config.sections)
+
+    return f"""
+You are an AI assistant helping Indian doctors create concise patient consultation summaries.
+
+Context: {context_note}
+
+IMPORTANT: Only include information that was actually mentioned by the doctor in the audio. Do not add assumptions, differential diagnoses, or recommendations not explicitly stated.
+
+Requirements:
+- Language: {template_config.language}
+- Tone: {template_config.tone}
+- Format: {template_config.prescription_format}
+- Include sections: {sections_text}
+
+Instructions:
+1. **PRIMARY FOCUS**: Transcribe and analyze the audio recording(s) - this is the main source of information
+2. Extract key medical information mentioned in the audio conversations
+3. **SECONDARY**: If images are provided, analyze them and mention relevant visual findings (handwritten notes, prescriptions, medical images, etc.)
+4. Process ALL audio files provided (primary + additional recordings) for complete context
+5. Keep the summary concise and factual based on what was actually said/shown
+6. Use appropriate medical terminology for Indian healthcare context
+7. Only include medications, dosages, and advice explicitly mentioned by the doctor in audio
+8. Do not add assumptions or recommendations not explicitly stated in the audio
+9. If information is missing from audio, simply omit that section rather than noting it's missing
+10. **IMPORTANT**: If images are provided, include a brief mention of visual findings or observations from the images in your summary
+
+Please provide a concise, factual patient consultation summary based primarily on the audio recording(s), supplemented by any relevant visual information from images. If images are present, include observations about what is visible in them.
+    """.strip()
+
+def get_file_extension_from_url(url: str) -> str:
+    """Extract file extension from URL"""
+    parsed_url = urlparse(url)
+    path = parsed_url.path
+    if '.' in path:
+        return path.split('.')[-1].lower()
+    return ""
+
+def get_mime_type_from_content_type(content_type: str) -> str:
+    """Extract MIME type from content-type header"""
+    if content_type:
+        return content_type.split(';')[0].strip()
+    return ""
+
+async def download_file_from_url(url: str) -> str:
+    """Download file from URL and return local path with proper MIME type detection"""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client_http:
+            response = await client_http.get(url)
+            response.raise_for_status()
+
+            # Get MIME type from response headers
+            content_type = get_mime_type_from_content_type(response.headers.get("content-type", ""))
+
+            # Get file extension from URL
+            url_extension = get_file_extension_from_url(url)
+
+            # Determine appropriate file extension
+            if content_type:
+                # Use mimetypes to get extension from MIME type
+                extension = mimetypes.guess_extension(content_type)
+                if extension:
+                    suffix = extension
+                elif "audio" in content_type:
+                    suffix = f".{url_extension}" if url_extension in ["mp3", "wav", "m4a", "webm", "ogg", "aac", "flac"] else ".mp3"
+                elif "image" in content_type:
+                    suffix = f".{url_extension}" if url_extension in ["jpg", "jpeg", "png", "webp", "heic"] else ".jpg"
+                else:
+                    suffix = f".{url_extension}" if url_extension else ".bin"
+            else:
+                # Fallback to URL extension or default
+                if url_extension:
+                    suffix = f".{url_extension}"
+                else:
+                    suffix = ".bin"
+
+            # Create temporary file with proper extension
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+
+            logger.info(f"📥 Downloaded file: {url} -> {temp_file.name} (MIME: {content_type}, Extension: {suffix})")
+
+            async with aiofiles.open(temp_file.name, 'wb') as f:
+                await f.write(response.content)
+
+            return temp_file.name
+    except Exception as e:
+        logger.error(f"Failed to download file from {url}: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to download file: {str(e)}")
+
+@app.post("/api/generate-summary", response_model=GenerateSummaryResponse)
+async def generate_summary(request: GenerateSummaryRequest):
+    """Generate AI summary using Gemini 2.5 Flash Preview"""
+
+    if not client:
+        raise HTTPException(status_code=500, detail="Gemini client not initialized")
+
+    logger.info("🎯 Processing consultation with Gemini 2.5 Flash Preview...")
+
+    try:
+        # Generate prompt
+        prompt = generate_prompt(request.template_config, request.submitted_by)
+
+        # Prepare content parts
+        contents = [prompt]
+        files_processed = {"audio": 0, "images": 0, "errors": []}
+
+        # Process all audio files (primary + additional)
+        all_audio_urls = [request.primary_audio_url] + (request.additional_audio_urls or [])
+        logger.info(f"🎵 Processing {len(all_audio_urls)} audio file(s): 1 primary + {len(request.additional_audio_urls or [])} additional")
+
+       
+        for i, audio_url in enumerate(all_audio_urls):
+            try:
+                file_type = "primary" if i == 0 else f"additional-{i}"
+                logger.info(f"📤 Uploading {file_type} audio file: {audio_url}")
+
+                # Download file locally first
+                local_path = await download_file_from_url(audio_url)
+
+                # Upload to Gemini Files API
+                uploaded_file = client.files.upload(path=local_path)
+                contents.append(uploaded_file)
+                files_processed["audio"] += 1
+
+                logger.info(f"✅ {file_type.capitalize()} audio uploaded successfully: {uploaded_file.uri}")
+
+                # Clean up local file
+                os.unlink(local_path)
+
+            except Exception as e:
+                error_msg = f"Failed to upload {file_type} audio {audio_url}: {str(e)}"
+                logger.error(f"❌ {error_msg}")
+                files_processed["errors"].append(error_msg)
+
+        # Upload image files to Gemini
+        image_urls = request.image_urls or []
+        logger.info(f"🖼️ Processing {len(image_urls)} image file(s)")
+
+        for i, image_url in enumerate(image_urls):
+            try:
+                logger.info(f"📤 Uploading image file {i+1}/{len(image_urls)}: {image_url}")
+
+                # Download file locally first
+                local_path = await download_file_from_url(image_url)
+
+                # Upload to Gemini Files API
+                uploaded_file = client.files.upload(path=local_path)
+                contents.append(uploaded_file)
+                files_processed["images"] += 1
+
+                logger.info(f"✅ Image {i+1} uploaded successfully: {uploaded_file.uri}")
+
+                # Clean up local file
+                os.unlink(local_path)
+
+            except Exception as e:
+                error_msg = f"Failed to upload image {i+1} {image_url}: {str(e)}"
+                logger.error(f"❌ {error_msg}")
+                files_processed["errors"].append(error_msg)
+
+                
+
+        # Generate content using Gemini 2.5 Flash Preview
+        total_files = files_processed["audio"] + files_processed["images"]
+        logger.info(f"🤖 Generating summary with Gemini 2.5 Flash Preview...")
+        logger.info(f"📊 Total files being processed: {total_files} ({files_processed['audio']} audio + {files_processed['images']} images)")
+
+        if files_processed["errors"]:
+            logger.warning(f"⚠️ {len(files_processed['errors'])} file(s) failed to upload: {files_processed['errors']}")
+
+        if total_files == 0:
+            raise HTTPException(status_code=400, detail="No files were successfully uploaded for processing")
+
+        for idx, item in enumerate(contents):
+            logger.info(f"contents[{idx}] type: {type(item)} value: {item}")
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-preview-05-20",
+            contents=contents
+        )
+
+        summary = response.text
+        logger.info(f"✅ Summary generated successfully ({len(summary)} characters)")
+        logger.info(f"📈 Processing complete: {files_processed['audio']} audio + {files_processed['images']} images processed")
+
+        return GenerateSummaryResponse(
+            summary=summary,
+            model="gemini-2.5-flash-preview-05-20",
+            timestamp=datetime.now().isoformat(),
+            files_processed=files_processed
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Error generating summary: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate summary: {str(e)}"
+        )
+
+# Error handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    logger.error(f"Global exception: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error", "detail": str(exc)}
+    )
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8080))  # Cloud Run uses 8080 by default
+    reload = os.getenv("NODE_ENV") != "production"  # Only reload in development
+
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=port,
+        reload=reload,
+        log_level="info"
+    )
