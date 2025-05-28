@@ -1,0 +1,22 @@
+{
+  "timestamp": "2025-05-27T11:21:45.051Z",
+  "summary": {
+    "passed": 0,
+    "failed": 0,
+    "total": 0,
+    "issues": 0
+  },
+  "tests": [],
+  "issues": [],
+  "config": {
+    "frontendUrl": "http://localhost:3000",
+    "backendUrl": "http://localhost:3001",
+    "testUser": {
+      "name": "Dr. E2E Test",
+      "email": "e2e1748344902371@example.com",
+      "password": "testpassword123",
+      "clinic_name": "E2E Test Clinic",
+      "phone": "+91 9876543210"
+    }
+  }
+}

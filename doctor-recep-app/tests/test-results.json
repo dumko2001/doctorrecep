@@ -1,0 +1,85 @@
+{
+  "timestamp": "2025-05-27T07:14:09.139Z",
+  "summary": {
+    "passed": 16,
+    "failed": 0,
+    "total": 16
+  },
+  "tests": [
+    {
+      "name": "Backend health endpoint responds",
+      "status": "PASSED"
+    },
+    {
+      "name": "Backend returns 200 status",
+      "status": "PASSED"
+    },
+    {
+      "name": "Backend reports healthy status",
+      "status": "PASSED"
+    },
+    {
+      "name": "Backend returns timestamp",
+      "status": "PASSED"
+    },
+    {
+      "name": "Homepage loads successfully",
+      "status": "PASSED"
+    },
+    {
+      "name": "Login page loads successfully",
+      "status": "PASSED"
+    },
+    {
+      "name": "Signup page loads successfully",
+      "status": "PASSED"
+    },
+    {
+      "name": "Record page handles unauthenticated access",
+      "status": "PASSED"
+    },
+    {
+      "name": "PWA manifest is accessible",
+      "status": "PASSED"
+    },
+    {
+      "name": "Manifest has correct app name",
+      "status": "PASSED"
+    },
+    {
+      "name": "Manifest has correct short name",
+      "status": "PASSED"
+    },
+    {
+      "name": "Manifest configured for standalone display",
+      "status": "PASSED"
+    },
+    {
+      "name": "Manifest includes icons array",
+      "status": "PASSED"
+    },
+    {
+      "name": "Manifest has at least one icon",
+      "status": "PASSED"
+    },
+    {
+      "name": "Backend accepts requests from frontend origin",
+      "status": "PASSED"
+    },
+    {
+      "name": "Signup request does not crash server",
+      "status": "PASSED"
+    }
+  ],
+  "config": {
+    "frontendUrl": "http://localhost:3000",
+    "backendUrl": "http://localhost:3001",
+    "testUser": {
+      "name": "Dr. Test User",
+      "email": "test1748330048587@example.com",
+      "password": "testpassword123",
+      "clinic_name": "Test Clinic",
+      "phone": "+91 9876543210"
+    }
+  }
+}
