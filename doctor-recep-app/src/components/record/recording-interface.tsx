@@ -265,14 +265,35 @@ export function RecordingInterface() {
     setAddAudioState(s => ({ ...s, error: '' }))
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('Audio recording not supported')
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mediaRecorder = new MediaRecorder(stream)
+      
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100,
+        }
+      })
+
+      // Try different MIME types for better compatibility
+      let mimeType = 'audio/webm;codecs=opus';
+      if (!MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4';
+        } else if (MediaRecorder.isTypeSupported('audio/mpeg')) {
+          mimeType = 'audio/mpeg';
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm';
+        }
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType })
       const chunks: Blob[] = []
       mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
       mediaRecorder.onstop = async () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' })
-        const file = new File([blob], `additional_audio_${Date.now()}.webm`, {
-          type: 'audio/webm'
+        const blob = new Blob(chunks, { type: mimeType })
+        const fileExtension = mimeType.split('/')[1].split(';')[0] // Extract extension from mime type
+        const file = new File([blob], `additional_audio_${Date.now()}.${fileExtension}`, {
+          type: mimeType
         })
         setAddAudioState(s => ({ ...s, audioBlob: blob, audioFile: file, isRecording: false }))
       }

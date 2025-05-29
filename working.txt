@@ -1,0 +1,457 @@
+"""
+Doctor Reception System - Python Backend
+Using FastAPI and Google Gemini 2.5 Flash Preview with Base64 Inline Data
+"""
+
+import os
+import logging
+import mimetypes
+import asyncio
+from typing import List, Optional, Tuple
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from dotenv import load_dotenv
+import httpx
+import tempfile
+import aiofiles
+from datetime import datetime
+from urllib.parse import urlparse
+import ffmpeg
+import io
+from PIL import Image
+from google import genai
+from google.genai import types
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="Doctor Reception API",
+    description="AI-powered consultation summary system using Gemini 2.5 Flash with Base64 Inline Data",
+    version="2.0.0"
+)
+
+# Configure CORS - keep it simple and working
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:3000")],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Context manager for Gemini client
+class GeminiClientManager:
+    """Context manager for Gemini client"""
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.client = None
+
+    async def __aenter__(self):
+        try:
+            self.client = genai.Client(api_key=self.api_key)
+            logger.info("✅ Gemini client initialized successfully")
+            return self.client
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Gemini client: {e}")
+            raise
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        if self.client:
+            try:
+                await self.client.aio.close()
+                logger.info("✅ Gemini client closed successfully")
+            except Exception as e:
+                logger.error(f"❌ Error closing Gemini client: {e}")
+
+# Initialize Gemini client manager
+gemini_manager = GeminiClientManager(api_key=os.getenv("GEMINI_API_KEY"))
+
+# Pydantic models
+class TemplateConfig(BaseModel):
+    prescription_format: str = "structured"
+    language: str = "English"
+    tone: str = "professional"
+    sections: List[str] = [
+        "Chief Complaint", "History", "Examination",
+        "Diagnosis", "Treatment Plan", "Follow-up"
+    ]
+
+class GenerateSummaryRequest(BaseModel):
+    primary_audio_url: str
+    additional_audio_urls: Optional[List[str]] = []
+    image_urls: Optional[List[str]] = []
+    template_config: Optional[TemplateConfig] = TemplateConfig()
+    submitted_by: str = "doctor"
+
+class GenerateSummaryResponse(BaseModel):
+    summary: str
+    model: str
+    timestamp: str
+    files_processed: dict
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    try:
+        async with gemini_manager as client:
+            return {
+                "status": "healthy",
+                "timestamp": datetime.now().isoformat(),
+                "gemini_client": "connected" if client else "disconnected",
+                "model": "gemini-2.5-flash-preview-05-20"
+            }
+    except Exception:
+        return {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "gemini_client": "disconnected",
+            "model": "gemini-2.5-flash-preview-05-20"
+        }
+
+def generate_prompt(template_config: TemplateConfig, submitted_by: str) -> str:
+    """Generate AI prompt based on template configuration"""
+    context_note = (
+        "This consultation was recorded by the doctor during patient visit."
+        if submitted_by == "doctor"
+        else "This consultation is being reviewed by the receptionist for final summary."
+    )
+
+    sections_text = ", ".join(template_config.sections)
+
+    return f"""
+You are an AI assistant helping Indian doctors create concise patient consultation summaries.
+
+Context: {context_note}
+
+IMPORTANT: Only include information that was actually mentioned by the doctor in the audio. Do not add assumptions, differential diagnoses, or recommendations not explicitly stated.
+
+Requirements:
+- Language: {template_config.language}
+- Tone: {template_config.tone}
+- Format: {template_config.prescription_format}
+- Include sections: {sections_text}
+
+Instructions:
+1. **PRIMARY FOCUS**: Transcribe and analyze the audio recording(s) - this is the main source of information
+2. Extract key medical information mentioned in the audio conversations
+3. **SECONDARY**: If images are provided, analyze them and mention relevant visual findings (handwritten notes, prescriptions, medical images, etc.)
+4. Process ALL audio files provided (primary + additional recordings) for complete context
+5. Keep the summary concise and factual based on what was actually said/shown
+6. Use appropriate medical terminology for Indian healthcare context
+7. Only include medications, dosages, and advice explicitly mentioned by the doctor in audio
+8. Do not add assumptions or recommendations not explicitly stated in the audio
+9. If information is missing from audio, simply omit that section rather than noting it's missing
+10. **IMPORTANT**: If images are provided, include a brief mention of visual findings or observations from the images in your summary
+
+Please provide a concise, factual patient consultation summary based primarily on the audio recording(s), supplemented by any relevant visual information from images. If images are present, include observations about what is visible in them.
+    """.strip()
+
+def get_file_extension_from_url(url: str) -> str:
+    """Extract file extension from URL"""
+    parsed_url = urlparse(url)
+    path = parsed_url.path
+    if '.' in path:
+        return path.split('.')[-1].lower()
+    return ""
+
+def get_mime_type_from_content_type(content_type: str) -> str:
+    """Extract MIME type from content-type header"""
+    if content_type:
+        return content_type.split(';')[0].strip()
+    return ""
+
+async def detect_mime_type(url: str, content_type: str) -> str:
+    """Detect MIME type from URL and content-type header"""
+    # First try content-type header
+    if content_type:
+        mime_type = get_mime_type_from_content_type(content_type)
+        if mime_type:
+            return mime_type
+    
+    # Fallback to URL extension
+    url_extension = get_file_extension_from_url(url)
+    if url_extension:
+        # Use mimetypes.guess_type in a thread since it may access filesystem
+        guessed_type = await asyncio.to_thread(
+            lambda: mimetypes.guess_type(f"file.{url_extension}")[0]
+        )
+        if guessed_type:
+            return guessed_type
+        
+        # Manual mapping for common extensions
+        extension_map = {
+            'mp3': 'audio/mpeg',
+            'wav': 'audio/wav',
+            'm4a': 'audio/mp4',
+            'webm': 'audio/webm',
+            'ogg': 'audio/ogg',
+            'aac': 'audio/aac',
+            'flac': 'audio/flac',
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'png': 'image/png',
+            'webp': 'image/webp',
+            'heic': 'image/heic'
+        }
+        return extension_map.get(url_extension, 'application/octet-stream')
+    
+    return 'application/octet-stream'
+
+async def download_file_from_url(url: str) -> tuple[bytes, str]:
+    """Download file from URL and return bytes with detected MIME type"""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client_http:
+            response = await client_http.get(url)
+            response.raise_for_status()
+
+            # Get MIME type from response headers
+            content_type = response.headers.get("content-type", "")
+            
+            # Detect the actual MIME type asynchronously
+            mime_type = await detect_mime_type(url, content_type)
+            
+            logger.info(f"📥 Downloaded file: {url} (MIME: {mime_type}, Size: {len(response.content)} bytes)")
+
+            return response.content, mime_type
+            
+    except Exception as e:
+        logger.error(f"Failed to download file from {url}: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to download file: {str(e)}")
+
+async def convert_audio_to_wav(file_bytes):
+    """Convert audio to WAV format with 16kHz mono"""
+    def _blocking_ffmpeg_operations():
+        with tempfile.NamedTemporaryFile(suffix='.tmp', delete=False) as tmp_in, \
+             tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_out:
+            tmp_in.write(file_bytes)
+            tmp_in.flush()
+            
+            try:
+                # Create ffmpeg process with specific path
+                process = (
+                    ffmpeg
+                    .input(tmp_in.name)
+                    .output(tmp_out.name,
+                           acodec='pcm_s16le',  # 16-bit PCM
+                           ac=1,                # mono
+                           ar=16000)            # 16kHz
+                    .overwrite_output()
+                    .run_async(pipe_stdout=True, pipe_stderr=True)
+                )
+                
+                # Wait for the process to complete
+                stdout, stderr = process.communicate()
+                
+                if process.returncode != 0:
+                    raise RuntimeError(f"FFmpeg failed: {stderr.decode() if stderr else 'Unknown error'}")
+
+                # Read the converted file
+                with open(tmp_out.name, 'rb') as f:
+                    wav_bytes = f.read()
+                    
+                return wav_bytes, 'audio/wav'
+            finally:
+                # Clean up temp files
+                try:
+                    os.unlink(tmp_in.name)
+                    os.unlink(tmp_out.name)
+                except OSError:
+                    pass
+                    
+    return await asyncio.to_thread(_blocking_ffmpeg_operations)
+
+async def convert_image_to_png(file_bytes, max_size=1024):
+    """Convert image to PNG format and resize if needed"""
+    def _blocking_pil_operations():
+        img = Image.open(io.BytesIO(file_bytes))
+        
+        # Convert to RGB if needed
+        if img.mode in ('RGBA', 'P'):
+            img = img.convert('RGB')
+        
+        # Calculate new dimensions while maintaining aspect ratio
+        width, height = img.size
+        if width > max_size or height > max_size:
+            ratio = min(max_size/width, max_size/height)
+            new_width = int(width * ratio)
+            new_height = int(height * ratio)
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        
+        # Convert to PNG
+        output = io.BytesIO()
+        img.save(output, format='PNG', optimize=True)
+        png_bytes = output.getvalue()
+        
+        return png_bytes, 'image/png'
+        
+    return await asyncio.to_thread(_blocking_pil_operations)
+
+async def process_single_audio_file(audio_url: str, file_type: str) -> Tuple[types.Part, str, str]:
+    """Process a single audio file and return the part and metadata"""
+    logger.info(f"📤 Processing {file_type} audio file: {audio_url}")
+    
+    # Download file as bytes with MIME type detection
+    file_bytes, mime_type = await download_file_from_url(audio_url)
+    
+    # Convert audio to WAV format
+    wav_bytes, wav_mime_type = await convert_audio_to_wav(file_bytes)
+    
+    # Create Part from bytes
+    audio_part = types.Part.from_bytes(
+        data=wav_bytes,
+        mime_type=wav_mime_type
+    )
+    
+    logger.info(f"✅ {file_type.capitalize()} audio processed successfully (MIME: {wav_mime_type}, Size: {len(wav_bytes)} bytes)")
+    return audio_part, file_type, audio_url
+
+async def process_single_image_file(image_url: str, index: int, total: int) -> Tuple[types.Part, int, str]:
+    """Process a single image file and return the part and metadata"""
+    logger.info(f"📤 Processing image file {index+1}/{total}: {image_url}")
+    
+    # Download file as bytes with MIME type detection
+    file_bytes, mime_type = await download_file_from_url(image_url)
+    
+    # Convert image to PNG format
+    png_bytes, png_mime_type = await convert_image_to_png(file_bytes)
+    
+    # Create Part from bytes
+    image_part = types.Part.from_bytes(
+        data=png_bytes,
+        mime_type=png_mime_type
+    )
+    
+    logger.info(f"✅ Image {index+1} processed successfully (MIME: {png_mime_type}, Size: {len(png_bytes)} bytes)")
+    return image_part, index, image_url
+
+@app.post("/api/generate-summary", response_model=GenerateSummaryResponse)
+async def generate_summary(request: GenerateSummaryRequest):
+    """Generate AI summary using Gemini 2.5 Flash Preview with Base64 Inline Data"""
+
+    async with gemini_manager as client:
+        logger.info("🎯 Processing consultation with Gemini 2.5 Flash Preview (Base64 Inline Data)...")
+
+        try:
+            # Generate prompt
+            prompt = generate_prompt(request.template_config, request.submitted_by)
+
+            # Prepare content parts - start with the prompt
+            contents = [prompt]
+            files_processed = {"audio": 0, "images": 0, "errors": []}
+
+            # Process all audio files (primary + additional) concurrently
+            all_audio_urls = [request.primary_audio_url] + (request.additional_audio_urls or [])
+            logger.info(f"🎵 Processing {len(all_audio_urls)} audio file(s): 1 primary + {len(request.additional_audio_urls or [])} additional")
+
+            # Process audio files concurrently
+            audio_processing_tasks = [
+                process_single_audio_file(audio_url, "primary" if i == 0 else f"additional-{i}")
+                for i, audio_url in enumerate(all_audio_urls)
+            ]
+
+            audio_results = await asyncio.gather(*audio_processing_tasks, return_exceptions=True)
+
+            for result in audio_results:
+                if isinstance(result, Exception):
+                    error_msg = f"Failed to process audio file: {str(result)}"
+                    logger.error(f"❌ {error_msg}")
+                    files_processed["errors"].append(error_msg)
+                else:
+                    audio_part, file_type, audio_url = result
+                    contents.append(audio_part)
+                    files_processed["audio"] += 1
+
+            # Process image files
+            image_urls = request.image_urls or []
+            logger.info(f"🖼️ Processing {len(image_urls)} image file(s)")
+
+            # Process image files concurrently
+            image_processing_tasks = [
+                process_single_image_file(image_url, i, len(image_urls))
+                for i, image_url in enumerate(image_urls)
+            ]
+
+            image_results = await asyncio.gather(*image_processing_tasks, return_exceptions=True)
+
+            for result in image_results:
+                if isinstance(result, Exception):
+                    error_msg = f"Failed to process image file: {str(result)}"
+                    logger.error(f"❌ {error_msg}")
+                    files_processed["errors"].append(error_msg)
+                else:
+                    image_part, index, image_url = result
+                    contents.append(image_part)
+                    files_processed["images"] += 1
+
+            # Generate content using Gemini 2.5 Flash Preview asynchronously
+            total_files = files_processed["audio"] + files_processed["images"]
+            logger.info(f"🤖 Generating summary with Gemini 2.5 Flash Preview...")
+            logger.info(f"📊 Total files being processed: {total_files} ({files_processed['audio']} audio + {files_processed['images']} images)")
+
+            if files_processed["errors"]:
+                logger.warning(f"⚠️ {len(files_processed['errors'])} file(s) failed to process: {files_processed['errors']}")
+
+            if total_files == 0:
+                raise HTTPException(status_code=400, detail="No files were successfully processed")
+
+            # Log content structure for debugging
+            for idx, item in enumerate(contents):
+                if isinstance(item, str):
+                    logger.info(f"contents[{idx}] type: str (prompt) length: {len(item)}")
+                else:
+                    logger.info(f"contents[{idx}] type: {type(item)} (file part)")
+
+            response = await client.aio.models.generate_content(
+                model="gemini-2.5-flash-preview-05-20",
+                contents=contents
+            )
+
+            summary = response.text
+            logger.info(f"✅ Summary generated successfully ({len(summary)} characters)")
+            logger.info(f"📈 Processing complete: {files_processed['audio']} audio + {files_processed['images']} images processed")
+
+            return GenerateSummaryResponse(
+                summary=summary,
+                model="gemini-2.5-flash-preview-05-20",
+                timestamp=datetime.now().isoformat(),
+                files_processed=files_processed
+            )
+
+        except Exception as e:
+            logger.error(f"❌ Error generating summary: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate summary: {str(e)}"
+            )
+
+# Error handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    logger.error(f"Global exception: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error", "detail": str(exc)}
+    )
+
+# Add a startup event to log environment info
+@app.on_event("startup")
+async def startup_event():
+    logger.info("🚀 Application starting up...")
+    logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
+
+if __name__ == "__main__":
+    # For local development only
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8080, log_level="info")

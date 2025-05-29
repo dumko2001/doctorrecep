@@ -162,15 +162,33 @@ export function ConsultationModal({ consultation, onClose, onConsultationUpdate 
   }
 
   // Additional audio recording functions
-  const startAdditionalRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
+  const startAdditionalRecording = async () => {      try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100,
+        }
+      })
+
+      // Try different MIME types for better compatibility
+      let mimeType = 'audio/webm;codecs=opus';
+      if (!MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4';
+        } else if (MediaRecorder.isTypeSupported('audio/mpeg')) {
+          mimeType = 'audio/mpeg';
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm';
+        }
+      }
+
+      const recorder = new MediaRecorder(stream, { mimeType })
       const chunks: BlobPart[] = []
 
       recorder.ondataavailable = (e) => chunks.push(e.data)
       recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'audio/wav' })
+        const blob = new Blob(chunks, { type: mimeType })
         setAdditionalAudioBlob(blob)
         stream.getTracks().forEach(track => track.stop())
       }
@@ -195,8 +213,9 @@ export function ConsultationModal({ consultation, onClose, onConsultationUpdate 
     if (!additionalAudioBlob) return
 
     try {
-      const audioFile = new File([additionalAudioBlob], `additional-audio-${Date.now()}.wav`, {
-        type: 'audio/wav'
+      const fileExtension = additionalAudioBlob.type.split('/')[1].split(';')[0]
+      const audioFile = new File([additionalAudioBlob], `additional-audio-${Date.now()}.${fileExtension}`, {
+        type: additionalAudioBlob.type
       })
 
       const result = await addAdditionalAudio(consultation.id, audioFile)

@@ -44,14 +44,28 @@ export function AudioRecorder({ audioState, onStateChange }: AudioRecorderProps)
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
+          autoGainControl: true,
           sampleRate: 44100,
+          channelCount: 1  // Mono audio is clearer for voice
         }
       })
 
       streamRef.current = stream
 
+      // Try different MIME types for better compatibility
+      let mimeType = 'audio/webm;codecs=opus';
+      if (!MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4';
+        } else if (MediaRecorder.isTypeSupported('audio/mpeg')) {
+          mimeType = 'audio/mpeg';
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm';
+        }
+      }
+
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
+        mimeType: mimeType
       })
 
       mediaRecorderRef.current = mediaRecorder
@@ -65,11 +79,12 @@ export function AudioRecorder({ audioState, onStateChange }: AudioRecorderProps)
       }
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(chunks, { type: 'audio/webm' })
+        const audioBlob = new Blob(chunks, { type: mimeType })
 
         // Convert blob to File object for upload
-        const audioFile = new File([audioBlob], `recording_${Date.now()}.webm`, {
-          type: 'audio/webm'
+        const fileExtension = mimeType.split('/')[1].split(';')[0] // Extract extension from mime type
+        const audioFile = new File([audioBlob], `recording_${Date.now()}.${fileExtension}`, {
+          type: mimeType
         })
 
         // Validate the audio file

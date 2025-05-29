@@ -63,19 +63,22 @@ export function SimpleRecorder({ isMobile }: SimpleRecorderProps) {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
+          sampleRate: 44100,
         }
       })
 
       streamRef.current = stream
 
       // Try different MIME types for better compatibility
-      let mimeType = 'audio/webm'
-      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-        mimeType = 'audio/webm;codecs=opus'
-      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
-        mimeType = 'audio/mp4'
-      } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-        mimeType = 'audio/ogg'
+      let mimeType = 'audio/webm;codecs=opus';
+      if (!MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4';
+        } else if (MediaRecorder.isTypeSupported('audio/mpeg')) {
+          mimeType = 'audio/mpeg';
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm';
+        }
       }
 
       const mediaRecorder = new MediaRecorder(stream, { mimeType })
@@ -93,7 +96,8 @@ export function SimpleRecorder({ isMobile }: SimpleRecorderProps) {
         const blob = new Blob(chunks, { type: mimeType })
 
         // Convert blob to File object for upload
-        const file = new File([blob], `recording_${Date.now()}.webm`, {
+        const fileExtension = mimeType.split('/')[1].split(';')[0] // Extract extension from mime type
+        const file = new File([blob], `recording_${Date.now()}.${fileExtension}`, {
           type: mimeType
         })
 

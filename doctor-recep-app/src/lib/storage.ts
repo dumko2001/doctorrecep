@@ -6,8 +6,8 @@ export const STORAGE_CONFIG = {
   IMAGE_BUCKET: 'consultation-images',
   MAX_FILE_SIZE: 50 * 1024 * 1024, // 50MB per file
   MAX_TOTAL_SIZE: 100 * 1024 * 1024, // 100MB per consultation
-  ALLOWED_AUDIO_TYPES: ['audio/webm', 'audio/mp3', 'audio/wav', 'audio/m4a', 'audio/mpeg'],
-  ALLOWED_IMAGE_TYPES: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic'],
+  ALLOWED_AUDIO_TYPES: ['audio/*'], // Accept all audio formats
+  ALLOWED_IMAGE_TYPES: ['image/*'], // Accept all image formats
   RETENTION_DAYS: 30
 }
 
@@ -20,8 +20,11 @@ export function validateFile(file: File, type: 'audio' | 'image'): { valid: bool
 
   // Check file type
   const allowedTypes = type === 'audio' ? STORAGE_CONFIG.ALLOWED_AUDIO_TYPES : STORAGE_CONFIG.ALLOWED_IMAGE_TYPES
-  if (!allowedTypes.includes(file.type)) {
-    return { valid: false, error: `File type ${file.type} is not allowed` }
+  
+  // Check if the file type matches the general type (audio/* or image/*)
+  const fileType = file.type.split('/')[0] // Gets 'audio' or 'image'
+  if (!file.type || (type === 'audio' && fileType !== 'audio') || (type === 'image' && fileType !== 'image')) {
+    return { valid: false, error: `File type ${file.type} is not allowed. Please upload ${type} files only.` }
   }
 
   return { valid: true }
