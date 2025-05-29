@@ -1,11 +1,17 @@
-import { Metadata } from 'next'
+import { Metadata, Viewport } from 'next'
 import { getUser } from '@/lib/auth/dal'
 import { MobileRecordingInterface } from '@/components/mobile/recording-interface'
 
 export const metadata: Metadata = {
   title: 'Doctor Mobile - Record Consultation',
   description: 'Record patient consultations on mobile',
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no',
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 }
 
 export default async function MobilePage() {

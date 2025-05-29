@@ -34,6 +34,7 @@ export default async function SettingsPage() {
             <div className="flex items-center space-x-3 mb-2">
               <Link
                 href="/dashboard"
+                prefetch={true}
                 className="inline-flex items-center p-2 border border-orange-300 hover:border-teal-400 rounded-lg text-slate-700 bg-white/70 hover:bg-orange-50 transition-all duration-150 transform hover:scale-105 active:scale-95"
                 title="Back to Dashboard"
               >

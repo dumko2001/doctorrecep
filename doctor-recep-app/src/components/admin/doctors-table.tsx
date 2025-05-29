@@ -96,17 +96,86 @@ export function DoctorsTable({ doctors }: DoctorsTableProps) {
     }
   }
 
-  const handleTemplateEdit = async (doctor: DoctorWithStats) => {
-    const language = prompt('Select language (english/hindi/tamil/telugu/bengali):', doctor.template_config.language || 'english')
-    if (!language) return
-
-    const tone = prompt('Select tone (professional/friendly/formal):', doctor.template_config.tone || 'professional')
-    if (!tone) return
-
-    const format = prompt('Select prescription format (standard/detailed/minimal):', doctor.template_config.prescription_format || 'standard')
-    if (!format) return
-
-    if (confirm(`Update template for Dr. ${doctor.name}?\nLanguage: ${language}\nTone: ${tone}\nFormat: ${format}`)) {
+  const handleTemplateEdit = (doctor: DoctorWithStats) => {
+    // Create dialog HTML
+    const dialogHTML = `
+      <div id="template-dialog" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center;">
+        <div style="background: white; padding: 24px; border-radius: 8px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto;">
+          <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600;">Edit Template for Dr. ${doctor.name}</h3>
+          
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; margin-bottom: 4px; font-weight: 500;">Language:</label>
+            <select id="template-language" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+              <option value="english" ${doctor.template_config.language === 'english' ? 'selected' : ''}>English</option>
+              <option value="hindi" ${doctor.template_config.language === 'hindi' ? 'selected' : ''}>Hindi</option>
+              <option value="tamil" ${doctor.template_config.language === 'tamil' ? 'selected' : ''}>Tamil</option>
+              <option value="telugu" ${doctor.template_config.language === 'telugu' ? 'selected' : ''}>Telugu</option>
+              <option value="bengali" ${doctor.template_config.language === 'bengali' ? 'selected' : ''}>Bengali</option>
+            </select>
+          </div>
+          
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; margin-bottom: 4px; font-weight: 500;">Tone:</label>
+            <select id="template-tone" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+              <option value="professional" ${doctor.template_config.tone === 'professional' ? 'selected' : ''}>Professional</option>
+              <option value="friendly" ${doctor.template_config.tone === 'friendly' ? 'selected' : ''}>Friendly</option>
+              <option value="formal" ${doctor.template_config.tone === 'formal' ? 'selected' : ''}>Formal</option>
+            </select>
+          </div>
+          
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; margin-bottom: 4px; font-weight: 500;">Prescription Format:</label>
+            <select id="template-format" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+              <option value="standard" ${doctor.template_config.prescription_format === 'standard' ? 'selected' : ''}>Standard</option>
+              <option value="detailed" ${doctor.template_config.prescription_format === 'detailed' ? 'selected' : ''}>Detailed</option>
+              <option value="minimal" ${doctor.template_config.prescription_format === 'minimal' ? 'selected' : ''}>Minimal</option>
+            </select>
+          </div>
+          
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; margin-bottom: 8px; font-weight: 500;">Summary Sections:</label>
+            <div style="max-height: 150px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; border-radius: 4px;">
+              ${['Chief Complaint', 'History of Present Illness', 'Past Medical History', 'Physical Examination', 'Assessment/Diagnosis', 'Treatment Plan', 'Medications', 'Follow-up Instructions', 'Patient Education', 'Vital Signs'].map(section => `
+                <label style="display: block; margin-bottom: 4px; font-size: 14px;">
+                  <input type="checkbox" value="${section}" ${doctor.template_config.sections?.includes(section) ? 'checked' : ''} style="margin-right: 8px;">
+                  ${section}
+                </label>
+              `).join('')}
+            </div>
+          </div>
+          
+          <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 24px;">
+            <button id="template-cancel" style="padding: 8px 16px; border: 1px solid #ccc; background: white; border-radius: 4px; cursor: pointer;">Cancel</button>
+            <button id="template-save" style="padding: 8px 16px; border: none; background: #3b82f6; color: white; border-radius: 4px; cursor: pointer;">Save</button>
+          </div>
+        </div>
+      </div>
+    `
+    
+    // Add dialog to DOM
+    document.body.insertAdjacentHTML('beforeend', dialogHTML)
+    
+    // Add event listeners
+    const dialog = document.getElementById('template-dialog')!
+    const cancelBtn = document.getElementById('template-cancel')!
+    const saveBtn = document.getElementById('template-save')!
+    
+    const closeDialog = () => {
+      dialog.remove()
+    }
+    
+    cancelBtn.onclick = closeDialog
+    dialog.onclick = (e) => {
+      if (e.target === dialog) closeDialog()
+    }
+    
+    saveBtn.onclick = async () => {
+      const language = (document.getElementById('template-language') as HTMLSelectElement).value
+      const tone = (document.getElementById('template-tone') as HTMLSelectElement).value
+      const format = (document.getElementById('template-format') as HTMLSelectElement).value
+      const sections = Array.from(document.querySelectorAll('#template-dialog input[type="checkbox"]:checked')).map(cb => (cb as HTMLInputElement).value)
+      
+      closeDialog()
       setLoading(doctor.id)
       setMessage(null)
 
@@ -115,7 +184,8 @@ export function DoctorsTable({ doctors }: DoctorsTableProps) {
           ...doctor.template_config,
           language,
           tone,
-          prescription_format: format
+          prescription_format: format,
+          sections
         }
 
         const result = await updateDoctorTemplate(doctor.id, templateConfigToJson(updatedConfig))

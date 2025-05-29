@@ -483,7 +483,7 @@ export function ConsultationModal({ consultation, onClose, onConsultationUpdate 
                 <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
                 AI-Generated Patient Summary
               </h4>
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {(consultation.status === 'pending' || consultation.status === 'generated') && (
                   <button
                     onClick={handleGenerateSummary}
@@ -491,7 +491,8 @@ export function ConsultationModal({ consultation, onClose, onConsultationUpdate 
                     className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 disabled:from-purple-300 disabled:to-purple-400 text-white rounded-xl text-sm font-medium transition-all duration-200 shadow-lg hover:shadow-xl"
                   >
                     <Wand2 className="w-4 h-4" />
-                    <span>{isGenerating ? 'Generating...' : consultation.status === 'generated' ? 'Regenerate Summary' : 'Generate Summary'}</span>
+                    <span className="hidden sm:inline">{isGenerating ? 'Generating...' : consultation.status === 'generated' ? 'Regenerate Summary' : 'Generate Summary'}</span>
+                    <span className="sm:hidden">{isGenerating ? 'Gen...' : 'Generate'}</span>
                   </button>
                 )}
 

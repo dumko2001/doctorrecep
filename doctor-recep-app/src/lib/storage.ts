@@ -32,7 +32,7 @@ export function generateStoragePath(
   doctorId: string,
   consultationId: string,
   fileName: string,
-  type: 'audio' | 'image'
+  _type: 'audio' | 'image'
 ): string {
   const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_')
   return `${doctorId}/${consultationId}/${sanitizedFileName}`
@@ -58,7 +58,7 @@ export async function uploadFile(
     const filePath = generateStoragePath(doctorId, consultationId, file.name, type)
 
     // Upload file
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from(bucket)
       .upload(filePath, file, {
         cacheControl: '3600',
