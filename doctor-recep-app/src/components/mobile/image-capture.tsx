@@ -13,7 +13,7 @@ interface ImageCaptureProps {
   isMobile?: boolean // Keep if used, otherwise remove
 }
 
-export function ImageCapture({ imageState, onStateChange, isMobile }: ImageCaptureProps) {
+export function ImageCapture({ imageState, onStateChange, isMobile: _isMobile }: ImageCaptureProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 

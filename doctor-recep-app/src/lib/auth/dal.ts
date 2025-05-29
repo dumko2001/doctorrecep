@@ -6,6 +6,8 @@ import { decrypt } from './session'
 import { createClient } from '@/lib/supabase/server'
 import { Doctor, jsonToTemplateConfig } from '@/lib/types'
 
+
+
 export const verifySession = cache(async () => {
   const cookieStore = await cookies()
   const cookie = cookieStore.get('session')?.value
@@ -13,6 +15,18 @@ export const verifySession = cache(async () => {
 
   if (!session?.userId) {
     redirect('/login')
+  }
+
+  return { isAuth: true, userId: session.userId }
+})
+
+export const checkSession = cache(async () => {
+  const cookieStore = await cookies()
+  const cookie = cookieStore.get('session')?.value
+  const session = await decrypt(cookie)
+
+  if (!session?.userId) {
+    return null
   }
 
   return { isAuth: true, userId: session.userId }
@@ -31,7 +45,7 @@ export const getUser = cache(async (): Promise<Doctor | null> => {
       .single()
 
     if (error) {
-      console.error('Failed to fetch user:', error)
+      console.error('Failed to fetch user:', error.message || error)
       return null
     }
 
@@ -43,7 +57,7 @@ export const getUser = cache(async (): Promise<Doctor | null> => {
       password_hash: user.password_hash
     } as Doctor
   } catch (error) {
-    console.error('Failed to fetch user:', error)
+    console.error('Failed to fetch user:', error instanceof Error ? error.message : error)
     return null
   }
 })
@@ -58,7 +72,7 @@ export const getUserById = cache(async (userId: string): Promise<Doctor | null> 
       .single()
 
     if (error) {
-      console.error('Failed to fetch user by ID:', error)
+      console.error('Failed to fetch user by ID:', error.message || error)
       return null
     }
 
@@ -70,7 +84,7 @@ export const getUserById = cache(async (userId: string): Promise<Doctor | null> 
       password_hash: user.password_hash
     } as Doctor
   } catch (error) {
-    console.error('Failed to fetch user by ID:', error)
+    console.error('Failed to fetch user by ID:', error instanceof Error ? error.message : error)
     return null
   }
 })
@@ -86,7 +100,7 @@ export const getDoctorQuota = cache(async (userId: string) => {
       .single()
 
     if (error) {
-      console.error('Failed to fetch quota:', error)
+      console.error('Failed to fetch quota:', error.message || error)
       return null
     }
 
@@ -104,7 +118,7 @@ export const getDoctorQuota = cache(async (userId: string) => {
       days_until_reset: Math.max(0, daysUntilReset),
     }
   } catch (error) {
-    console.error('Failed to fetch quota:', error)
+    console.error('Failed to fetch quota:', error instanceof Error ? error.message : error)
     return null
   }
 })

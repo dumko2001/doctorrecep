@@ -1,4 +1,4 @@
-import { FileText, Clock, CheckCircle, Calendar } from 'lucide-react'
+import { FileText, Clock, CheckCircle, Calendar, Brain } from 'lucide-react'
 import { DashboardStats as StatsType } from '@/lib/types'
 
 interface DashboardStatsProps {
@@ -11,22 +11,22 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
       name: 'Total Consultations',
       value: stats.total_consultations,
       icon: FileText,
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-100',
+      color: 'text-teal-600',
+      bgColor: 'bg-teal-100',
     },
     {
       name: 'Pending Review',
       value: stats.pending_consultations,
       icon: Clock,
-      color: 'text-yellow-600',
-      bgColor: 'bg-yellow-100',
+      color: 'text-orange-600',
+      bgColor: 'bg-orange-100',
     },
     {
       name: 'Generated Summaries',
       value: stats.generated_consultations,
-      icon: FileText,
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-100',
+      icon: Brain,
+      color: 'text-emerald-600',
+      bgColor: 'bg-emerald-100',
     },
     {
       name: 'Approved',
@@ -39,8 +39,8 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
       name: 'Today',
       value: stats.today_consultations,
       icon: Calendar,
-      color: 'text-indigo-600',
-      bgColor: 'bg-indigo-100',
+      color: 'text-amber-600',
+      bgColor: 'bg-amber-100',
     },
   ]
 
@@ -51,21 +51,21 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
         return (
           <div
             key={item.name}
-            className="bg-white overflow-hidden shadow rounded-lg"
+            className="bg-white/80 backdrop-blur-sm overflow-hidden shadow-lg rounded-lg border border-orange-200/50 hover:shadow-xl transition-all duration-300 hover:scale-105"
           >
             <div className="p-5">
               <div className="flex items-center">
                 <div className="flex-shrink-0">
-                  <div className={`w-8 h-8 ${item.bgColor} rounded-md flex items-center justify-center`}>
+                  <div className={`w-8 h-8 ${item.bgColor} rounded-md flex items-center justify-center shadow-sm`}>
                     <Icon className={`w-5 h-5 ${item.color}`} />
                   </div>
                 </div>
-                <div className="ml-5 w-0 flex-1">
+                <div className="ml-5 flex-1 min-w-0">
                   <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
+                    <dt className="text-xs font-medium text-slate-600 leading-tight">
                       {item.name}
                     </dt>
-                    <dd className="text-lg font-medium text-gray-900">
+                    <dd className="text-xl font-bold text-slate-800 mt-1">
                       {item.value}
                     </dd>
                   </dl>

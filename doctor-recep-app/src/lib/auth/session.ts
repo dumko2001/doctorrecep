@@ -39,13 +39,18 @@ export async function createSession(userId: string) {
   const session = await encrypt({ userId, expiresAt })
   const cookieStore = await cookies()
 
+  console.log('DEBUG: Creating session for user:', userId)
+  console.log('DEBUG: Session expires at:', expiresAt)
+
   cookieStore.set('session', session, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: false, // Always false for debugging
     expires: expiresAt,
     sameSite: 'lax',
     path: '/',
   })
+  
+  console.log('DEBUG: Session cookie set successfully')
 }
 
 export async function updateSession() {
@@ -53,7 +58,11 @@ export async function updateSession() {
   const session = cookieStore.get('session')?.value
   const payload = await decrypt(session)
 
+  console.log('DEBUG: Updating session - session exists:', !!session)
+  console.log('DEBUG: Updating session - payload valid:', !!payload)
+
   if (!session || !payload) {
+    console.log('DEBUG: Cannot update session - missing session or payload')
     return null
   }
 
@@ -61,14 +70,26 @@ export async function updateSession() {
 
   cookieStore.set('session', session, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: false, // Always false for debugging
     expires: expires,
     sameSite: 'lax',
     path: '/',
   })
+  
+  console.log('DEBUG: Session updated successfully')
+}
+
+export async function refreshSession(userId: string) {
+  // Delete old session and create new one
+  console.log('DEBUG: Refreshing session for user:', userId)
+  await deleteSession()
+  await createSession(userId)
+  console.log('DEBUG: Session refresh completed')
 }
 
 export async function deleteSession() {
   const cookieStore = await cookies()
+  console.log('DEBUG: Deleting session cookie')
   cookieStore.delete('session')
+  console.log('DEBUG: Session cookie deleted')
 }

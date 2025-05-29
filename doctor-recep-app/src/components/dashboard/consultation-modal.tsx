@@ -17,7 +17,7 @@ export function ConsultationModal({ consultation, onClose, onConsultationUpdate 
   const [isGenerating, setIsGenerating] = useState(false)
   const [isApproving, setIsApproving] = useState(false)
   const [editedNote, setEditedNote] = useState(consultation.edited_note || consultation.ai_generated_note || '')
-  const [isPlaying, setIsPlaying] = useState(false)
+  const [playingAudio, setPlayingAudio] = useState<HTMLAudioElement | null>(null)
   const [success, setSuccess] = useState<string>('')
   const [additionalImages, setAdditionalImages] = useState<Array<{ id: string; url: string; preview?: string }>>([])
   const [isRecordingAdditional, setIsRecordingAdditional] = useState(false)
@@ -61,7 +61,7 @@ export function ConsultationModal({ consultation, onClose, onConsultationUpdate 
 
       setSuccess('Images uploaded successfully!')
       setTimeout(() => setSuccess(''), 3000)
-    } catch (error) {
+    } catch (_error) {
       setSuccess('Failed to upload images')
     }
   }
@@ -149,46 +149,40 @@ export function ConsultationModal({ consultation, onClose, onConsultationUpdate 
   }
 
   const playAudio = () => {
+    // If audio is already playing, pause it
+    if (playingAudio) {
+      playingAudio.pause()
+      playingAudio.currentTime = 0
+      setPlayingAudio(null)
+      return
+    }
+
     // Create audio element and play from URL
     const audio = new Audio(consultation.primary_audio_url)
-    audio.play()
-    setIsPlaying(true)
-
-    audio.onended = () => setIsPlaying(false)
+    
+    audio.onended = () => setPlayingAudio(null)
     audio.onerror = () => {
-      setIsPlaying(false)
+      setPlayingAudio(null)
       setSuccess('Failed to play audio')
     }
+
+    setPlayingAudio(audio)
+    audio.play().catch(() => {
+      setPlayingAudio(null)
+      setSuccess('Failed to play audio')
+    })
   }
 
   // Additional audio recording functions
-  const startAdditionalRecording = async () => {      try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 44100,
-        }
-      })
-
-      // Try different MIME types for better compatibility
-      let mimeType = 'audio/webm;codecs=opus';
-      if (!MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-        if (MediaRecorder.isTypeSupported('audio/mp4')) {
-          mimeType = 'audio/mp4';
-        } else if (MediaRecorder.isTypeSupported('audio/mpeg')) {
-          mimeType = 'audio/mpeg';
-        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-          mimeType = 'audio/webm';
-        }
-      }
-
-      const recorder = new MediaRecorder(stream, { mimeType })
+  const startAdditionalRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
       const chunks: BlobPart[] = []
 
       recorder.ondataavailable = (e) => chunks.push(e.data)
       recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: mimeType })
+        const blob = new Blob(chunks, { type: 'audio/wav' })
         setAdditionalAudioBlob(blob)
         stream.getTracks().forEach(track => track.stop())
       }
@@ -196,7 +190,7 @@ export function ConsultationModal({ consultation, onClose, onConsultationUpdate 
       recorder.start()
       setMediaRecorder(recorder)
       setIsRecordingAdditional(true)
-    } catch (error) {
+    } catch (_error) {
       setSuccess('Failed to start recording. Please check microphone permissions.')
     }
   }
@@ -213,9 +207,8 @@ export function ConsultationModal({ consultation, onClose, onConsultationUpdate 
     if (!additionalAudioBlob) return
 
     try {
-      const fileExtension = additionalAudioBlob.type.split('/')[1].split(';')[0]
-      const audioFile = new File([additionalAudioBlob], `additional-audio-${Date.now()}.${fileExtension}`, {
-        type: additionalAudioBlob.type
+      const audioFile = new File([additionalAudioBlob], `additional-audio-${Date.now()}.wav`, {
+        type: 'audio/wav'
       })
 
       const result = await addAdditionalAudio(consultation.id, audioFile)
@@ -239,74 +232,73 @@ export function ConsultationModal({ consultation, onClose, onConsultationUpdate 
       } else {
         setSuccess(result.error || 'Failed to upload additional audio')
       }
-    } catch (error) {
+    } catch (_error) {
       setSuccess('Failed to upload additional audio')
     }
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[95vh] shadow-2xl flex flex-col">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 z-50">
+      <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[95vh] shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4">
+        <div className="bg-gradient-to-r from-orange-50 to-amber-50 px-6 py-4 border-b border-orange-200/50">
           <div className="flex items-center justify-between">
-            <div className="text-white">
-              <h3 className="text-xl font-semibold">
+            <div>
+              <h3 className="text-xl font-bold text-slate-800">
                 Patient #{consultation.patient_number || 'N/A'}
               </h3>
-              <p className="text-blue-100 text-sm">
+              <p className="text-sm text-slate-600">
                 {formatDate(consultation.created_at)} • {consultation.submitted_by} • {consultation.status}
               </p>
             </div>
             <button
               onClick={onClose}
-              className="text-white/80 hover:text-white transition-colors p-2 hover:bg-white/10 rounded-lg"
+              className="p-2 hover:bg-orange-100 rounded-xl transition-colors"
             >
-              <X className="w-5 h-5" />
+              <X className="w-5 h-5 text-slate-600" />
             </button>
           </div>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+        <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 flex-1 overflow-y-auto pb-20 sm:pb-24">
           {/* Audio Section - Side by Side Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             {/* Primary Audio */}
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-5 border border-blue-100">
+            <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl p-5 border border-orange-200">
               <div className="flex items-center justify-between mb-4">
-                <h4 className="text-lg font-semibold text-gray-900 flex items-center">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
+                <h4 className="text-lg font-semibold text-slate-800 flex items-center">
+                  <div className="w-2 h-2 bg-orange-500 rounded-full mr-3"></div>
                   Primary Audio
                 </h4>
               </div>
               <div className="flex items-center space-x-4">
                 <button
                   onClick={playAudio}
-                  disabled={isPlaying}
-                  className="flex items-center space-x-3 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-xl text-sm font-medium transition-all duration-200 shadow-lg hover:shadow-xl"
+                  className="flex items-center space-x-3 px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-sm font-medium transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
                 >
-                  {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-                  <span>{isPlaying ? 'Playing...' : 'Play Audio'}</span>
+                  {playingAudio ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                  <span>{playingAudio ? 'Pause Audio' : 'Play Audio'}</span>
                 </button>
               </div>
             </div>
 
             {/* Additional Audio */}
             {consultation.status !== 'approved' && (
-              <div className="bg-gradient-to-r from-red-50 to-pink-50 rounded-xl p-5 border border-red-100">
-                <div className="flex items-center justify-between mb-4">
-                  <h4 className="text-lg font-semibold text-gray-900 flex items-center">
-                    <div className="w-2 h-2 bg-red-500 rounded-full mr-3"></div>
+              <div className="bg-gradient-to-r from-teal-50 to-emerald-50 rounded-xl p-3 sm:p-5 border border-teal-200">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 sm:mb-4 space-y-2 sm:space-y-0">
+                  <h4 className="text-base sm:text-lg font-semibold text-slate-800 flex items-center">
+                    <div className="w-2 h-2 bg-teal-500 rounded-full mr-2 sm:mr-3"></div>
                     Additional Audio
                   </h4>
-                  <span className="text-xs text-gray-500 bg-white px-2 py-1 rounded-full">Optional</span>
+                  <span className="text-xs text-gray-500 bg-white px-2 py-1 rounded-full self-start">Optional</span>
                 </div>
                 <div className="space-y-3">
-                  <div className="flex items-center space-x-3 flex-wrap gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-3 gap-2">
                     {!isRecordingAdditional && !additionalAudioBlob && (
                       <button
                         onClick={startAdditionalRecording}
-                        className="flex items-center space-x-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-all duration-200"
+                        className="flex items-center justify-center space-x-2 px-3 sm:px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-sm font-medium transition-all duration-200 w-full sm:w-auto"
                       >
                         <Mic className="w-4 h-4" />
                         <span>Record</span>
@@ -316,21 +308,30 @@ export function ConsultationModal({ consultation, onClose, onConsultationUpdate 
                     {isRecordingAdditional && (
                       <button
                         onClick={stopAdditionalRecording}
-                        className="flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium animate-pulse transition-all duration-200"
+                        className="flex items-center justify-center space-x-2 px-3 sm:px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium animate-pulse transition-all duration-200 w-full sm:w-auto"
                       >
                         <Square className="w-4 h-4" />
-                        <span>Stop</span>
+                        <span>Stop Recording</span>
                       </button>
                     )}
 
                     {additionalAudioBlob && (
-                      <button
-                        onClick={uploadAdditionalAudio}
-                        className="flex items-center space-x-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-all duration-200"
-                      >
-                        <Upload className="w-4 h-4" />
-                        <span>Upload</span>
-                      </button>
+                      <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 w-full sm:w-auto">
+                        <button
+                          onClick={uploadAdditionalAudio}
+                          className="flex items-center justify-center space-x-2 px-3 sm:px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-all duration-200"
+                        >
+                          <Upload className="w-4 h-4" />
+                          <span>Upload</span>
+                        </button>
+                        <button
+                          onClick={() => setAdditionalAudioBlob(null)}
+                          className="flex items-center justify-center space-x-2 px-3 sm:px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-all duration-200"
+                        >
+                          <X className="w-4 h-4" />
+                          <span>Cancel</span>
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -371,18 +372,24 @@ export function ConsultationModal({ consultation, onClose, onConsultationUpdate 
                 {consultation.image_urls
                   .filter((imageUrl): imageUrl is string => typeof imageUrl === 'string' && imageUrl !== null)
                   .map((imageUrl, index) => (
-                    <div key={index} className="relative">
-                      <Image
-                        src={imageUrl}
-                        alt={`Original image ${index + 1}`}
-                        className="w-24 h-24 object-cover rounded border hover:w-48 hover:h-48 transition-all duration-200 cursor-pointer"
-                        width={96}
-                        height={96}
-                        onError={(e) => {
-                          console.error('Image failed to load:', imageUrl)
-                          e.currentTarget.style.display = 'none'
-                        }}
-                      />
+                    <div key={index} className="relative group">
+                      <div className="w-24 h-24 bg-gray-200 rounded border overflow-hidden">
+                        <Image
+                          src={imageUrl}
+                          alt={`Original image ${index + 1}`}
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-200 cursor-pointer"
+                          width={96}
+                          height={96}
+                          priority={index < 2}
+                          loading={index < 2 ? 'eager' : 'lazy'}
+                          onError={(e) => {
+                            console.error('Image failed to load:', imageUrl)
+                            const target = e.currentTarget as HTMLImageElement
+                            target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iOTYiIGhlaWdodD0iOTYiIHZpZXdCb3g9IjAgMCA5NiA5NiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9Ijk2IiBoZWlnaHQ9Ijk2IiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik00OCA2NEw0MCA1Nkw0OCA0OEw1NiA1Nkw0OCA2NFoiIGZpbGw9IiM5Q0EzQUYiLz4KPC9zdmc+'
+                            target.alt = 'Failed to load image'
+                          }}
+                        />
+                      </div>
                       <div className="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs px-1 py-0.5 rounded">
                         {index + 1}
                       </div>
@@ -393,35 +400,35 @@ export function ConsultationModal({ consultation, onClose, onConsultationUpdate 
           )}
 
           {/* Additional Images Section for Nurses */}
-          <div className="bg-blue-50 rounded-lg p-4">
+          <div className="bg-orange-50 rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-medium text-gray-900">
+              <h4 className="text-sm font-medium text-slate-800">
                 Additional Images
               </h4>
-              <span className="text-xs text-gray-500">Optional for nurses</span>
+              <span className="text-xs text-slate-500">Optional for nurses</span>
             </div>
 
             <div className="flex items-center space-x-3 mb-3">
               {/* Compact Camera button */}
               <button
                 onClick={() => cameraInputRef.current?.click()}
-                className="flex items-center space-x-2 px-3 py-2 border border-blue-300 rounded-md hover:bg-blue-100 transition-colors text-sm"
+                className="flex items-center space-x-2 px-3 py-2 border border-orange-300 rounded-md hover:bg-orange-100 transition-colors text-sm"
               >
-                <Camera className="w-4 h-4 text-blue-500" />
-                <span className="text-blue-700">Camera</span>
+                <Camera className="w-4 h-4 text-orange-500" />
+                <span className="text-orange-700">Camera</span>
               </button>
 
               {/* Compact Upload button */}
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex items-center space-x-2 px-3 py-2 border border-blue-300 rounded-md hover:bg-blue-100 transition-colors text-sm"
+                className="flex items-center space-x-2 px-3 py-2 border border-orange-300 rounded-md hover:bg-orange-100 transition-colors text-sm"
               >
                 <Upload className="w-4 h-4" />
-                <span className="text-blue-700">Upload</span>
+                <span className="text-orange-700">Upload</span>
               </button>
 
               {additionalImages.length > 0 && (
-                <span className="text-xs text-green-600 font-medium">
+                <span className="text-xs text-orange-600 font-medium">
                   +{additionalImages.length} image{additionalImages.length > 1 ? 's' : ''}
                 </span>
               )}
@@ -525,43 +532,39 @@ export function ConsultationModal({ consultation, onClose, onConsultationUpdate 
         </div>
 
         {/* Actions Footer */}
-        <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-                consultation.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                consultation.status === 'generated' ? 'bg-blue-100 text-blue-800' :
-                'bg-green-100 text-green-800'
+        <div className="bg-gradient-to-r from-orange-50 to-amber-50 px-3 sm:px-6 py-3 sm:py-4 border-t border-orange-200/50 flex-shrink-0">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+            <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
+              <div className={`px-2 sm:px-3 py-1 rounded-full text-xs font-medium self-start ${
+                consultation.status === 'pending' ? 'bg-orange-100 text-orange-800 border border-orange-300' :
+                consultation.status === 'generated' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
+                'bg-green-100 text-green-800 border border-green-300'
               }`}>
                 {consultation.status.toUpperCase()}
               </div>
-              <span className="text-sm text-gray-600">
+              <span className="text-xs sm:text-sm text-slate-600">
                 Last updated: {formatDate(consultation.updated_at)}
               </span>
             </div>
 
-            <div className="flex items-center space-x-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
               <button
                 onClick={onClose}
-                className="px-6 py-2 border border-gray-300 text-sm font-medium rounded-xl text-gray-700 bg-white hover:bg-gray-50 transition-all duration-200"
+                className="px-4 sm:px-6 py-2 border border-orange-300 hover:border-teal-400 text-sm font-medium rounded-xl text-slate-700 bg-white/70 hover:bg-orange-50 transition-all duration-200 text-center"
               >
                 Close
               </button>
-
-
 
               {consultation.status !== 'approved' && (
                 <button
                   onClick={handleApprove}
                   disabled={isApproving || !editedNote.trim()}
-                  className="flex items-center space-x-2 px-6 py-2 border border-transparent text-sm font-medium rounded-xl text-white bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-green-300 disabled:to-green-400 transition-all duration-200 shadow-lg hover:shadow-xl"
+                  className="flex items-center justify-center space-x-2 px-4 sm:px-6 py-2 border border-transparent text-sm font-medium rounded-xl text-white bg-gradient-to-r from-teal-600 to-emerald-700 hover:from-teal-700 hover:to-emerald-800 disabled:from-teal-300 disabled:to-emerald-400 transition-all duration-200 shadow-lg hover:shadow-xl"
                 >
                   <Save className="w-4 h-4" />
                   <span>{isApproving ? 'Approving...' : 'Approve & Save'}</span>
                 </button>
               )}
-
-
             </div>
           </div>
         </div>

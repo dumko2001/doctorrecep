@@ -33,6 +33,9 @@ export function RecordingInterface() {
   const [selectedConsultationId, setSelectedConsultationId] = useState<string | null>(null)
   const [addAudioState, setAddAudioState] = useState<{ audioBlob: Blob | null, audioFile: File | null, isRecording: boolean, isSubmitting: boolean, error: string }>({ audioBlob: null, audioFile: null, isRecording: false, isSubmitting: false, error: '' })
 
+  // Audio playback state
+  const [playingAudio, setPlayingAudio] = useState<{ url: string, audio: HTMLAudioElement } | null>(null)
+
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -40,6 +43,10 @@ export function RecordingInterface() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const cameraInputRef = useRef<HTMLInputElement | null>(null)
+  
+  // Additional refs for add audio functionality
+  const addAudioRecorderRef = useRef<MediaRecorder | null>(null)
+  const addAudioStreamRef = useRef<MediaStream | null>(null)
 
   useEffect(() => {
     // Detect if device is mobile
@@ -60,13 +67,19 @@ export function RecordingInterface() {
     }
   }, [images])
 
-  useEffect(() => {
-    // Fetch pending consultations on mount
+  // Defer pending consultations fetch to improve initial load time
+  const fetchPendingConsultations = () => {
     setLoadingPending(true)
     getConsultations('pending').then(res => {
       if (res.success && res.data) setPendingConsultations(res.data)
       setLoadingPending(false)
     })
+  }
+
+  useEffect(() => {
+    // Defer pending consultations fetch by 500ms to improve perceived performance
+    const timer = setTimeout(fetchPendingConsultations, 500)
+    return () => clearTimeout(timer)
   }, [])
 
 
@@ -270,39 +283,48 @@ export function RecordingInterface() {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          sampleRate: 44100,
         }
       })
+      
+      addAudioStreamRef.current = stream
 
       // Try different MIME types for better compatibility
-      let mimeType = 'audio/webm;codecs=opus';
-      if (!MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-        if (MediaRecorder.isTypeSupported('audio/mp4')) {
-          mimeType = 'audio/mp4';
-        } else if (MediaRecorder.isTypeSupported('audio/mpeg')) {
-          mimeType = 'audio/mpeg';
-        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-          mimeType = 'audio/webm';
-        }
+      let mimeType = 'audio/webm'
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus'
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        mimeType = 'audio/mp4'
+      } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+        mimeType = 'audio/ogg'
       }
 
       const mediaRecorder = new MediaRecorder(stream, { mimeType })
+      addAudioRecorderRef.current = mediaRecorder
+      
       const chunks: Blob[] = []
       mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
       mediaRecorder.onstop = async () => {
         const blob = new Blob(chunks, { type: mimeType })
-        const fileExtension = mimeType.split('/')[1].split(';')[0] // Extract extension from mime type
-        const file = new File([blob], `additional_audio_${Date.now()}.${fileExtension}`, {
+        const file = new File([blob], `additional_audio_${Date.now()}.webm`, {
           type: mimeType
         })
         setAddAudioState(s => ({ ...s, audioBlob: blob, audioFile: file, isRecording: false }))
+        
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop())
       }
+      
       mediaRecorder.start()
       setAddAudioState(s => ({ ...s, isRecording: true }))
-      setTimeout(() => { if (mediaRecorder.state === 'recording') mediaRecorder.stop() }, 120000) // max 2 min
-      // Save recorder to state if you want to allow stop button
     } catch (e: unknown) {
       setAddAudioState(s => ({ ...s, error: (e as Error).message, isRecording: false }))
+    }
+  }
+
+  // Stop recording for additional audio
+  const handleStopAddAudio = () => {
+    if (addAudioRecorderRef.current && addAudioState.isRecording) {
+      addAudioRecorderRef.current.stop()
     }
   }
 
@@ -325,10 +347,33 @@ export function RecordingInterface() {
     }
   }
 
-  // Helper to play audio from URL
+  // Helper to play audio from URL with proper state management
   const playAudioFromUrl = (url: string) => {
+    // Stop any currently playing audio
+    if (playingAudio) {
+      playingAudio.audio.pause()
+      playingAudio.audio.currentTime = 0
+      if (playingAudio.url === url) {
+        setPlayingAudio(null)
+        return
+      }
+    }
+
+    // Create new audio and play
     const audio = new Audio(url)
-    audio.play()
+    audio.addEventListener('ended', () => setPlayingAudio(null))
+    audio.addEventListener('error', () => setPlayingAudio(null))
+    
+    setPlayingAudio({ url, audio })
+    audio.play().catch(() => {
+      setPlayingAudio(null)
+      setError('Failed to play audio')
+    })
+  }
+
+  // Helper to check if audio is currently playing
+  const isAudioPlaying = (url: string) => {
+    return playingAudio?.url === url
   }
 
   // Format duration
@@ -353,7 +398,7 @@ export function RecordingInterface() {
       </div>
 
       {/* Recording Section */}
-      <div className="bg-white rounded-lg shadow-sm border p-6">
+      <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-lg border border-orange-200/50 p-6">
         <div className="flex flex-col items-center space-y-4">
           {!audioBlob ? (
             // Recording interface
@@ -391,7 +436,7 @@ export function RecordingInterface() {
               <div className="flex items-center space-x-4">
                 <button
                   onClick={togglePlayback}
-                  className={`${isMobile ? 'w-16 h-16' : 'w-12 h-12'} rounded-full bg-green-500 hover:bg-green-600 text-white flex items-center justify-center`}
+                  className={`${isMobile ? 'w-16 h-16' : 'w-12 h-12'} rounded-full bg-gradient-to-r from-teal-600 to-emerald-700 hover:from-teal-700 hover:to-emerald-800 text-white flex items-center justify-center shadow-lg`}
                 >
                   {isPlaying ? (
                     <Pause className={`${isMobile ? 'w-8 h-8' : 'w-6 h-6'}`} />
@@ -411,7 +456,7 @@ export function RecordingInterface() {
 
                 <button
                   onClick={clearRecording}
-                  className={`px-4 py-2 ${isMobile ? 'text-base' : 'text-sm'} bg-gray-500 hover:bg-gray-600 text-white rounded-md`}
+                  className={`px-4 py-2 ${isMobile ? 'text-base' : 'text-sm'} bg-slate-500 hover:bg-slate-600 text-white rounded-md shadow-md`}
                 >
                   Clear
                 </button>
@@ -428,8 +473,8 @@ export function RecordingInterface() {
       </div>
 
       {/* Images Section */}
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h3 className={`${isMobile ? 'text-lg' : 'text-base'} font-medium text-gray-900 mb-4`}>
+      <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-lg border border-orange-200/50 p-6">
+        <h3 className={`${isMobile ? 'text-lg' : 'text-base'} font-medium text-slate-800 mb-4`}>
           Photos (Optional)
         </h3>
 
@@ -464,7 +509,7 @@ export function RecordingInterface() {
               />
               <button
                 onClick={() => removeImage(image.id)}
-                className="absolute top-1 right-1 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center"
+                className="absolute top-1 right-1 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-lg"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -492,7 +537,7 @@ export function RecordingInterface() {
       </div>
 
       {/* Submit Section */}
-      <div className="bg-white rounded-lg shadow-sm border p-6">
+      <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-lg border border-orange-200/50 p-6">
         <button
           onClick={handleSubmit}
           disabled={!canSubmit}
@@ -544,8 +589,8 @@ export function RecordingInterface() {
       </div>
 
       {/* Pending Consultations Section */}
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Pending Consultations</h3>
+      <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-lg border border-orange-200/50 p-6">
+        <h3 className="text-lg font-medium text-slate-800 mb-4">Pending Consultations</h3>
         {loadingPending ? (
           <div className="text-gray-500">Loading...</div>
         ) : pendingConsultations.length === 0 ? (
@@ -559,18 +604,49 @@ export function RecordingInterface() {
                     <span className="font-semibold">Patient #{consultation.patient_number}</span>
                     <span className="ml-2 text-xs text-gray-500">{new Date(consultation.created_at).toLocaleString()}</span>
                   </div>
-                  <button className="text-blue-600 underline text-xs" onClick={() => setSelectedConsultationId(consultation.id)} disabled={selectedConsultationId === consultation.id}>Add More Audio</button>
+                  <button 
+                    className="px-2 py-1 bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-white text-xs rounded-md shadow-sm transition-all duration-150 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:transform-none" 
+                    onClick={() => setSelectedConsultationId(consultation.id)} 
+                    disabled={selectedConsultationId === consultation.id}
+                  >
+                    Add Audio
+                  </button>
                 </div>
                 <div className="mt-2">
                   <span className="font-medium text-sm">Audios:</span>
                   <div className="flex flex-wrap gap-2 mt-1">
-                    <button className="px-2 py-1 bg-gray-200 rounded text-xs" onClick={() => playAudioFromUrl(consultation.primary_audio_url)}>Main Audio</button>
+                    <button 
+                      className={`flex items-center space-x-1 px-2 py-1 rounded text-xs transition-all duration-150 ${
+                        isAudioPlaying(consultation.primary_audio_url) 
+                          ? 'bg-green-500 text-white' 
+                          : 'bg-gray-200 hover:bg-gray-300'
+                      }`} 
+                      onClick={() => playAudioFromUrl(consultation.primary_audio_url)}
+                    >
+                      {isAudioPlaying(consultation.primary_audio_url) ? 
+                        <Pause className="w-3 h-3" /> : 
+                        <Play className="w-3 h-3" />
+                      }
+                      <span>Main Audio</span>
+                    </button>
                     {Array.isArray(consultation.additional_audio_urls) &&
                       consultation.additional_audio_urls
                         .filter((url): url is string => typeof url === 'string')
                         .map((url, i) => (
-                          <button key={i} className="px-2 py-1 bg-gray-100 rounded text-xs" onClick={() => playAudioFromUrl(url)}>
-                            Additional {i + 1}
+                          <button 
+                            key={i} 
+                            className={`flex items-center space-x-1 px-2 py-1 rounded text-xs transition-all duration-150 ${
+                              isAudioPlaying(url) 
+                                ? 'bg-green-500 text-white' 
+                                : 'bg-gray-100 hover:bg-gray-200'
+                            }`} 
+                            onClick={() => playAudioFromUrl(url)}
+                          >
+                            {isAudioPlaying(url) ? 
+                              <Pause className="w-3 h-3" /> : 
+                              <Play className="w-3 h-3" />
+                            }
+                            <span>Additional {i + 1}</span>
                           </button>
                         ))}
                   </div>
@@ -578,16 +654,57 @@ export function RecordingInterface() {
                 {/* Add Audio UI */}
                 {selectedConsultationId === consultation.id && (
                   <div className="mt-4 border-t pt-4">
-                    <div className="flex items-center gap-2">
-                      <button className="px-3 py-2 bg-blue-500 text-white rounded" onClick={handleRecordAddAudio} disabled={addAudioState.isRecording || addAudioState.isSubmitting}>Record</button>
-                      {/* Optionally add upload button here */}
-                      {addAudioState.isRecording && <span className="text-red-500 ml-2">Recording...</span>}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                      {!addAudioState.isRecording ? (
+                        <button 
+                          className="flex items-center space-x-1 px-2 py-1 bg-gradient-to-r from-teal-600 to-emerald-700 hover:from-teal-700 hover:to-emerald-800 text-white rounded text-xs shadow-md transition-all duration-150 w-full sm:w-auto justify-center" 
+                          onClick={handleRecordAddAudio} 
+                          disabled={addAudioState.isSubmitting}
+                        >
+                          <Mic className="w-3 h-3" />
+                          <span>Record</span>
+                        </button>
+                      ) : (
+                        <button 
+                          className="flex items-center space-x-1 px-2 py-1 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded text-xs shadow-md transition-all duration-150 w-full sm:w-auto justify-center" 
+                          onClick={handleStopAddAudio}
+                        >
+                          <Square className="w-3 h-3" />
+                          <span>Stop</span>
+                        </button>
+                      )}
+                      {addAudioState.isRecording && (
+                        <div className="flex items-center space-x-1 text-red-600">
+                          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                          <span className="text-xs">Recording...</span>
+                        </div>
+                      )}
                     </div>
                     {addAudioState.audioBlob && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <audio controls src={URL.createObjectURL(addAudioState.audioBlob)} />
-                        <button className="px-2 py-1 bg-green-500 text-white rounded" onClick={handleSubmitAddAudio} disabled={addAudioState.isSubmitting}>Submit</button>
-                        <button className="px-2 py-1 bg-gray-300 rounded" onClick={() => setSelectedConsultationId(null)}>Cancel</button>
+                      <div className="mt-2 p-2 bg-orange-50 rounded-lg border border-orange-200">
+                        <div className="mb-2">
+                          <audio controls src={URL.createObjectURL(addAudioState.audioBlob)} className="w-full h-8" />
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-1">
+                          <button 
+                            className="flex items-center space-x-1 px-2 py-1 bg-gradient-to-r from-emerald-600 to-green-700 hover:from-emerald-700 hover:to-green-800 text-white rounded text-xs shadow-md transition-all duration-150 flex-1 justify-center" 
+                            onClick={handleSubmitAddAudio} 
+                            disabled={addAudioState.isSubmitting}
+                          >
+                            <Send className="w-3 h-3" />
+                            <span>{addAudioState.isSubmitting ? 'Submitting...' : 'Submit'}</span>
+                          </button>
+                          <button 
+                            className="flex items-center space-x-1 px-2 py-1 bg-orange-200 hover:bg-orange-300 text-slate-700 rounded text-xs shadow-sm transition-all duration-150 flex-1 justify-center" 
+                            onClick={() => {
+                              setSelectedConsultationId(null)
+                              setAddAudioState({ audioBlob: null, audioFile: null, isRecording: false, isSubmitting: false, error: '' })
+                            }}
+                          >
+                            <X className="w-3 h-3" />
+                            <span>Cancel</span>
+                          </button>
+                        </div>
                       </div>
                     )}
                     {addAudioState.error && <div className="text-red-500 text-xs mt-2">{addAudioState.error}</div>}

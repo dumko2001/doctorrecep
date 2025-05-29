@@ -27,13 +27,13 @@ export function ConsultationsList({ consultations }: ConsultationsListProps) {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'pending':
-        return <Clock className="w-4 h-4 text-yellow-500" />
+        return <Clock className="w-4 h-4 text-orange-600" />
       case 'generated':
-        return <FileText className="w-4 h-4 text-purple-500" />
+        return <FileText className="w-4 h-4 text-emerald-600" />
       case 'approved':
-        return <CheckCircle className="w-4 h-4 text-green-500" />
+        return <CheckCircle className="w-4 h-4 text-green-600" />
       default:
-        return <Clock className="w-4 h-4 text-gray-500" />
+        return <Clock className="w-4 h-4 text-slate-500" />
     }
   }
 
@@ -53,13 +53,13 @@ export function ConsultationsList({ consultations }: ConsultationsListProps) {
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
       case 'pending':
-        return 'bg-yellow-100 text-yellow-800'
+        return 'bg-orange-100 text-orange-800 border border-orange-300'
       case 'generated':
-        return 'bg-purple-100 text-purple-800'
+        return 'bg-emerald-100 text-emerald-800 border border-emerald-300'
       case 'approved':
-        return 'bg-green-100 text-green-800'
+        return 'bg-green-100 text-green-800 border border-green-300'
       default:
-        return 'bg-gray-100 text-gray-800'
+        return 'bg-slate-100 text-slate-800 border border-slate-300'
     }
   }
 
@@ -68,9 +68,9 @@ export function ConsultationsList({ consultations }: ConsultationsListProps) {
   if (consultations.length === 0) {
     return (
       <div className="p-6 text-center">
-        <FileText className="mx-auto h-12 w-12 text-gray-400" />
-        <h3 className="mt-2 text-sm font-medium text-gray-900">No consultations</h3>
-        <p className="mt-1 text-sm text-gray-500">
+        <FileText className="mx-auto h-12 w-12 text-slate-400" />
+        <h3 className="mt-2 text-sm font-medium text-slate-800">No consultations</h3>
+        <p className="mt-1 text-sm text-slate-600">
           Get started by recording a consultation on the mobile interface.
         </p>
       </div>
@@ -81,24 +81,24 @@ export function ConsultationsList({ consultations }: ConsultationsListProps) {
     <>
       <div className="p-6">
         {/* Filter Tabs */}
-        <div className="border-b border-gray-200 mb-6">
-          <nav className="-mb-px flex space-x-8">
+        <div className="border-b border-orange-200 mb-6">
+          <nav className="-mb-px flex space-x-2 sm:space-x-8 overflow-x-auto">
             {tabKeys.map((key) => (
               <button
                 key={key}
                 onClick={() => setFilter(key)}
-                className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
+                className={`whitespace-nowrap py-2 px-2 sm:px-1 border-b-2 font-medium text-xs sm:text-sm transition-colors duration-200 flex-shrink-0 ${
                   filter === key
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'border-teal-500 text-teal-600'
+                    : 'border-transparent text-slate-600 hover:text-slate-800 hover:border-orange-300'
                 }`}
               >
                 {key.charAt(0).toUpperCase() + key.slice(1)}
                 {consultations.filter(c => c.status === key).length > 0 && (
-                  <span className={`ml-2 py-0.5 px-2 rounded-full text-xs ${
+                  <span className={`ml-1 sm:ml-2 py-0.5 px-1 sm:px-2 rounded-full text-xs ${
                     filter === key
-                      ? 'bg-blue-100 text-blue-600'
-                      : 'bg-gray-100 text-gray-900'
+                      ? 'bg-teal-100 text-teal-700'
+                      : 'bg-orange-100 text-slate-700'
                   }`}>
                     {consultations.filter(c => c.status === key).length}
                   </span>
@@ -113,51 +113,53 @@ export function ConsultationsList({ consultations }: ConsultationsListProps) {
           {filteredConsultations.map((consultation) => (
             <div
               key={consultation.id}
-              className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+              className="bg-white/80 backdrop-blur-sm border border-orange-200/50 rounded-lg p-3 sm:p-4 hover:shadow-lg hover:bg-white/90 transition-all duration-200 hover:scale-[1.02]"
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="flex-shrink-0">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+                <div className="flex items-start sm:items-center space-x-3 sm:space-x-4 min-w-0 flex-1">
+                  <div className="flex-shrink-0 mt-0.5 sm:mt-0">
                     {getStatusIcon(consultation.status)}
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center space-x-2">
-                      <h3 className="text-sm font-medium text-gray-900">
+                    <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-2">
+                      <h3 className="text-sm font-medium text-slate-800 truncate">
                         Patient #{consultation.patient_number || 'N/A'}
                       </h3>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass(consultation.status)}`}>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium self-start ${getStatusBadgeClass(consultation.status)}`}>
                         {getStatusText(consultation.status)}
                       </span>
                     </div>
 
-                    <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
-                      <span>Submitted by: {consultation.submitted_by}</span>
-                      <span>•</span>
+                    <div className="mt-1 flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-4 text-xs sm:text-sm text-slate-600">
+                      <span className="truncate">Submitted by: {consultation.submitted_by}</span>
+                      <span className="hidden sm:inline">•</span>
                       <span>{formatRelativeTime(consultation.created_at)}</span>
-                      <span>•</span>
-                      <span>{formatDate(consultation.created_at)}</span>
+                      <span className="hidden sm:inline">•</span>
+                      <span className="hidden sm:inline">{formatDate(consultation.created_at)}</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2 flex-shrink-0">
                   {consultation.status === 'pending' && (
                     <button
                       onClick={() => setSelectedConsultation(consultation)}
-                      className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      className="inline-flex items-center px-2 sm:px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-gradient-to-r from-teal-600 to-emerald-700 hover:from-teal-700 hover:to-emerald-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 shadow-md hover:shadow-lg transition-all duration-200"
                     >
                       <Wand2 className="w-3 h-3 mr-1" />
-                      Generate Summary
+                      <span className="hidden sm:inline">Generate Summary</span>
+                      <span className="sm:hidden">Generate</span>
                     </button>
                   )}
 
                   <button
                     onClick={() => setSelectedConsultation(consultation)}
-                    className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    className="inline-flex items-center px-2 sm:px-3 py-1.5 border border-orange-300 hover:border-teal-400 text-xs font-medium rounded text-slate-700 bg-white/70 hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-all duration-200"
                   >
                     <Eye className="w-3 h-3 mr-1" />
-                    View Details
+                    <span className="hidden sm:inline">View Details</span>
+                    <span className="sm:hidden">View</span>
                   </button>
                 </div>
               </div>
@@ -167,7 +169,7 @@ export function ConsultationsList({ consultations }: ConsultationsListProps) {
 
         {filteredConsultations.length === 0 && filter !== 'all' && (
           <div className="text-center py-8">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-slate-600">
               No consultations with status &quot;{filter}&quot;.
             </p>
           </div>

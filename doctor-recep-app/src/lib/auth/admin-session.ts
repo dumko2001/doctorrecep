@@ -37,18 +37,23 @@ export async function decryptAdminSession(session: string | undefined = '') {
   }
 }
 
-export async function createAdminSession(adminId: string, role: 'admin' | 'super_admin') {
+export async function createAdminSession(adminId: string, role: 'admin' | 'super_admin' = 'admin') {
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
   const session = await encryptAdminSession({ adminId, role, expiresAt })
   const cookieStore = await cookies()
 
+  console.log('DEBUG: Creating admin session for admin:', adminId, 'role:', role)
+  console.log('DEBUG: Admin session expires at:', expiresAt)
+
   cookieStore.set('admin_session', session, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: false, // Always false for debugging
     expires: expiresAt,
     sameSite: 'lax',
     path: '/',
   })
+  
+  console.log('DEBUG: Admin session cookie set successfully')
 }
 
 export async function updateAdminSession() {
@@ -73,7 +78,9 @@ export async function updateAdminSession() {
 
 export async function deleteAdminSession() {
   const cookieStore = await cookies()
+  console.log('DEBUG: Deleting admin session cookie')
   cookieStore.delete('admin_session')
+  console.log('DEBUG: Admin session cookie deleted')
 }
 
 // For backward compatibility with regular session functions

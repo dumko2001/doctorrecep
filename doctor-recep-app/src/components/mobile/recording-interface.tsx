@@ -42,8 +42,8 @@ export function MobileRecordingInterface() {
       </div>
 
       {/* Audio Recording */}
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">
+      <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-lg border border-orange-200/50 p-6">
+        <h3 className="text-lg font-medium text-slate-800 mb-4">
           Audio Recording
         </h3>
         <AudioRecorder
@@ -53,8 +53,8 @@ export function MobileRecordingInterface() {
       </div>
 
       {/* Image Capture */}
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">
+      <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-lg border border-orange-200/50 p-6">
+        <h3 className="text-lg font-medium text-slate-800 mb-4">
           Handwritten Notes (Optional)
         </h3>
         <ImageCapture
@@ -64,8 +64,8 @@ export function MobileRecordingInterface() {
       </div>
 
       {/* Submission */}
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">
+      <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-lg border border-orange-200/50 p-6">
+        <h3 className="text-lg font-medium text-slate-800 mb-4">
           Submit Consultation
         </h3>
         <SubmissionForm

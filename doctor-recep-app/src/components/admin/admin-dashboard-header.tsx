@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { LogOut, Shield, BarChart3 } from 'lucide-react'
 import { adminLogout } from '@/lib/actions/admin-auth'
 import { Admin } from '@/lib/types'
@@ -10,6 +11,19 @@ interface AdminDashboardHeaderProps {
 }
 
 export function AdminDashboardHeader({ admin }: AdminDashboardHeaderProps) {
+  const router = useRouter()
+
+  const handleLogout = async () => {
+    try {
+      await adminLogout()
+      router.push('/admin/login')
+    } catch (error) {
+      console.error('Logout error:', error)
+      // Force redirect even if there's an error
+      router.push('/admin/login')
+    }
+  }
+
   return (
     <header className="bg-white shadow">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -49,15 +63,13 @@ export function AdminDashboardHeader({ admin }: AdminDashboardHeaderProps) {
             </nav>
 
             {/* Logout Button */}
-            <form action={adminLogout}>
-              <button
-                type="submit"
-                className="flex items-center space-x-1 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Logout</span>
-              </button>
-            </form>
+            <button
+              onClick={handleLogout}
+              className="flex items-center space-x-1 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Logout</span>
+            </button>
           </div>
         </div>
       </div>

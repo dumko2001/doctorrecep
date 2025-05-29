@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation'
 import bcrypt from 'bcryptjs'
 import { createClient } from '@/lib/supabase/server'
-import { createSession, deleteSession } from '@/lib/auth/session'
+import { createSession, deleteSession, refreshSession } from '@/lib/auth/session'
 import { SignupFormSchema, LoginFormSchema } from '@/lib/validations'
 import { FormState } from '@/lib/types'
 
@@ -179,4 +179,91 @@ export async function login(state: FormState, formData: FormData): Promise<FormS
 export async function logout() {
   await deleteSession()
   redirect('/login')
+}
+
+export async function changePassword(doctorId: string, formData: FormData): Promise<FormState> {
+  const currentPassword = formData.get('currentPassword') as string
+  const newPassword = formData.get('newPassword') as string
+  const confirmPassword = formData.get('confirmPassword') as string
+
+  // Basic validation
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    return {
+      success: false,
+      message: 'All fields are required.',
+    }
+  }
+
+  if (newPassword !== confirmPassword) {
+    return {
+      success: false,
+      message: 'New passwords do not match.',
+    }
+  }
+
+  if (newPassword.length < 8) {
+    return {
+      success: false,
+      message: 'New password must be at least 8 characters long.',
+    }
+  }
+
+  try {
+    const supabase = await createClient()
+
+    // Get current password hash
+    const { data: doctor, error: fetchError } = await supabase
+      .from('doctors')
+      .select('password_hash')
+      .eq('id', doctorId)
+      .single()
+
+    if (fetchError || !doctor) {
+      return {
+        success: false,
+        message: 'Doctor not found.',
+      }
+    }
+
+    // Verify current password
+    const isValidPassword = await bcrypt.compare(currentPassword, doctor.password_hash)
+
+    if (!isValidPassword) {
+      return {
+        success: false,
+        message: 'Current password is incorrect.',
+      }
+    }
+
+    // Hash new password
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10)
+
+    // Update password
+    const { error: updateError } = await supabase
+      .from('doctors')
+      .update({ password_hash: hashedNewPassword })
+      .eq('id', doctorId)
+
+    if (updateError) {
+      console.error('Password update error:', updateError)
+      return {
+        success: false,
+        message: 'Failed to update password.',
+      }
+    }
+
+    // Refresh session with updated credentials
+    await refreshSession(doctorId)
+
+    return {
+      success: true,
+      message: 'Password changed successfully!',
+    }
+  } catch (error) {
+    console.error('Password change error:', error)
+    return {
+      success: false,
+      message: 'An unexpected error occurred.',
+    }
+  }
 }

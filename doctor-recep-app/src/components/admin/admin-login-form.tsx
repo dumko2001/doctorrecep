@@ -1,6 +1,7 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { adminLogin } from '@/lib/actions/admin-auth'
 import { FormState } from '@/lib/types'
 
@@ -14,6 +15,13 @@ const initialState: FormState = {
 
 export function AdminLoginForm() {
   const [state, formAction, isPending] = useActionState(adminLogin, initialState)
+  const router = useRouter()
+
+  useEffect(() => {
+    if (state?.success) {
+      router.push('/admin/dashboard')
+    }
+  }, [state?.success, router])
 
   return (
     <form action={formAction} className="mt-8 space-y-6">
@@ -56,15 +64,21 @@ export function AdminLoginForm() {
       </div>
 
       {state?.message && (
-        <div className="rounded-md bg-red-50 p-4">
+        <div className={`rounded-md p-4 ${state.success ? 'bg-green-50' : 'bg-red-50'}`}>
           <div className="flex">
             <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
+              {state.success ? (
+                <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              ) : (
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              )}
             </div>
             <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">
+              <h3 className={`text-sm font-medium ${state.success ? 'text-green-800' : 'text-red-800'}`}>
                 {state.message}
               </h3>
             </div>

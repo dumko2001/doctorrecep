@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Mic, Square, Play, Pause } from 'lucide-react'
 import { AudioRecordingState } from '@/lib/types'
 import { formatDuration, supportsAudioRecording } from '@/lib/utils'
-import { validateFile, STORAGE_CONFIG } from '@/lib/storage'
+import { validateFile } from '@/lib/storage'
 
 interface AudioRecorderProps {
   audioState: AudioRecordingState
@@ -51,20 +51,8 @@ export function AudioRecorder({ audioState, onStateChange, isMobile }: AudioReco
 
       streamRef.current = stream
 
-      // Try different audio formats based on browser support
-      let mimeType = 'audio/webm;codecs=opus';
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        if (MediaRecorder.isTypeSupported('audio/mp4')) {
-          mimeType = 'audio/mp4';
-        } else if (MediaRecorder.isTypeSupported('audio/mpeg')) {
-          mimeType = 'audio/mpeg';
-        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-          mimeType = 'audio/webm';
-        }
-      }
-      
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: mimeType
+        mimeType: 'audio/webm;codecs=opus'
       })
 
       mediaRecorderRef.current = mediaRecorder

@@ -1,6 +1,5 @@
 'use server'
 
-import { redirect } from 'next/navigation'
 import bcrypt from 'bcryptjs'
 import { createClient } from '@/lib/supabase/server'
 // Ensure createAdminSession is used if it's imported
@@ -55,25 +54,25 @@ export async function adminLogin(state: FormState, formData: FormData): Promise<
     // Ensure admin.role is correctly typed as 'admin' | 'super_admin'
     await createAdminSession(admin.id, admin.role as "admin" | "super_admin");
 
-  } catch (error) {
-    // Check if this is a redirect error (which is expected)
-    if (error instanceof Error && error.message === 'NEXT_REDIRECT') {
-      throw error; // Re-throw redirect errors
+    // Return success instead of redirecting (to avoid Next.js 15 grey screen issue)
+    return {
+      success: true,
+      message: 'Login successful! Redirecting...',
     }
+
+  } catch (error) {
     console.error("Admin Login Error:", error);
     return {
       success: false,
       message: 'An unexpected error occurred.',
     }
   }
-
-  // All checks passed, proceed to redirect
-  redirect('/admin/dashboard')
 }
 
 export async function adminLogout() {
   await deleteSession()
-  redirect('/admin/login')
+  // Return success instead of redirecting (to avoid Next.js 15 grey screen issue)
+  return { success: true }
 }
 
 export async function createAdminUser(

@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, X, Edit, RotateCcw, Ban, CheckCircle, Clock, AlertTriangle } from 'lucide-react'
+import { Check, X, Edit, RotateCcw, Ban, CheckCircle, Clock, AlertTriangle, FileText } from 'lucide-react'
 import { DoctorWithStats } from '@/lib/types'
-import { performAdminAction, resetDoctorQuota } from '@/lib/actions/admin'
+import { performAdminAction, resetDoctorQuota, updateDoctorTemplate } from '@/lib/actions/admin'
 import { formatDate } from '@/lib/utils'
+import { templateConfigToJson } from '@/lib/types'
 
 interface DoctorsTableProps {
   doctors: DoctorWithStats[]
@@ -72,7 +73,66 @@ export function DoctorsTable({ doctors }: DoctorsTableProps) {
     const newQuota = prompt('Enter new monthly quota:')
     if (!newQuota || isNaN(Number(newQuota))) return
 
-    await handleAction('update_quota', doctorId, { quota: Number(newQuota) })
+    if (confirm(`Are you sure you want to update the monthly quota to ${newQuota}?`)) {
+      await handleAction('update_quota', doctorId, { quota: Number(newQuota) })
+    }
+  }
+
+  const handleRejectDoctor = async (doctorId: string) => {
+    if (confirm('Are you sure you want to reject this doctor? This action will permanently delete their account.')) {
+      await handleAction('reject', doctorId)
+    }
+  }
+
+  const handleDisableDoctor = async (doctorId: string) => {
+    if (confirm('Are you sure you want to disable this doctor? They will not be able to log in until re-enabled.')) {
+      await handleAction('disable', doctorId)
+    }
+  }
+
+  const handleQuotaResetConfirm = async (doctorId: string) => {
+    if (confirm('Are you sure you want to reset this doctor\'s quota usage to zero?')) {
+      await handleQuotaReset(doctorId)
+    }
+  }
+
+  const handleTemplateEdit = async (doctor: DoctorWithStats) => {
+    const language = prompt('Select language (english/hindi/tamil/telugu/bengali):', doctor.template_config.language || 'english')
+    if (!language) return
+
+    const tone = prompt('Select tone (professional/friendly/formal):', doctor.template_config.tone || 'professional')
+    if (!tone) return
+
+    const format = prompt('Select prescription format (standard/detailed/minimal):', doctor.template_config.prescription_format || 'standard')
+    if (!format) return
+
+    if (confirm(`Update template for Dr. ${doctor.name}?\nLanguage: ${language}\nTone: ${tone}\nFormat: ${format}`)) {
+      setLoading(doctor.id)
+      setMessage(null)
+
+      try {
+        const updatedConfig = {
+          ...doctor.template_config,
+          language,
+          tone,
+          prescription_format: format
+        }
+
+        const result = await updateDoctorTemplate(doctor.id, templateConfigToJson(updatedConfig))
+
+        if (result.success) {
+          setMessage({ type: 'success', text: 'Template updated successfully' })
+          window.location.reload()
+        } else {
+          setMessage({ type: 'error', text: result.error || 'Failed to update template' })
+        }
+      } catch {
+        setMessage({ type: 'error', text: 'An unexpected error occurred' })
+      } finally {
+        setLoading(null)
+        setTimeout(() => setMessage(null), 3000)
+      }
+    }
   }
 
   const getStatusBadge = (doctor: DoctorWithStats) => {
@@ -126,19 +186,19 @@ export function DoctorsTable({ doctors }: DoctorsTableProps) {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Doctor
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Quota Usage
+              <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Quota
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
                 Activity
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Actions
               </th>
             </tr>
@@ -146,32 +206,32 @@ export function DoctorsTable({ doctors }: DoctorsTableProps) {
           <tbody className="bg-white divide-y divide-gray-200">
             {doctors.map((doctor) => (
               <tr key={doctor.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap">
+                <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
                   <div>
                     <div className="text-sm font-medium text-gray-900">
                       {doctor.name}
                     </div>
-                    <div className="text-sm text-gray-500">
+                    <div className="text-xs sm:text-sm text-gray-500 break-all">
                       {doctor.email}
                     </div>
                     {doctor.clinic_name ? (
-                      <div className="text-xs text-gray-400">{doctor.clinic_name}</div>
+                      <div className="text-xs text-gray-400 hidden sm:block">{doctor.clinic_name}</div>
                     ) : null}
                     {doctor.phone ? (
-                      <div className="text-xs text-gray-400">{doctor.phone}</div>
+                      <div className="text-xs text-gray-400 hidden sm:block">{doctor.phone}</div>
                     ) : null}
                   </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
+                <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
                   {getStatusBadge(doctor)}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">
+                <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
+                  <div className="text-xs sm:text-sm text-gray-900">
                     {doctor.quota_used} / {doctor.monthly_quota}
                   </div>
                   {getQuotaBadge(doctor)}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500 hidden lg:table-cell">
                   <div>
                     {doctor.total_consultations} consultations
                   </div>
@@ -184,8 +244,8 @@ export function DoctorsTable({ doctors }: DoctorsTableProps) {
                     </div>
                   )}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <div className="flex space-x-2">
+                <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <div className="flex flex-wrap gap-1 sm:gap-2">
                     {!doctor.approved ? (
                       <>
                         <button
@@ -197,7 +257,7 @@ export function DoctorsTable({ doctors }: DoctorsTableProps) {
                           <Check className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleAction('reject', doctor.id)}
+                          onClick={() => handleRejectDoctor(doctor.id)}
                           disabled={loading === doctor.id}
                           className="text-red-600 hover:text-red-900 disabled:opacity-50"
                           title="Reject Doctor"
@@ -216,7 +276,7 @@ export function DoctorsTable({ doctors }: DoctorsTableProps) {
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleQuotaReset(doctor.id)}
+                          onClick={() => handleQuotaResetConfirm(doctor.id)}
                           disabled={loading === doctor.id}
                           className="text-purple-600 hover:text-purple-900 disabled:opacity-50"
                           title="Reset Quota"
@@ -224,7 +284,15 @@ export function DoctorsTable({ doctors }: DoctorsTableProps) {
                           <RotateCcw className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleAction('disable', doctor.id)}
+                          onClick={() => handleTemplateEdit(doctor)}
+                          disabled={loading === doctor.id}
+                          className="text-green-600 hover:text-green-900 disabled:opacity-50"
+                          title="Edit Template"
+                        >
+                          <FileText className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDisableDoctor(doctor.id)}
                           disabled={loading === doctor.id}
                           className="text-red-600 hover:text-red-900 disabled:opacity-50"
                           title="Disable Doctor"
@@ -249,6 +317,8 @@ export function DoctorsTable({ doctors }: DoctorsTableProps) {
           </p>
         </div>
       )}
+
+
     </div>
   )
 }

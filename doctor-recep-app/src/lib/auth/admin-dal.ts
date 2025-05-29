@@ -18,6 +18,18 @@ export const verifyAdminSession = cache(async () => {
   return { isAuth: true, adminId: session.adminId, role: session.role }
 })
 
+export const checkAdminSession = cache(async () => {
+  const cookieStore = await cookies()
+  const cookie = cookieStore.get('admin_session')?.value
+  const session = await decryptAdminSession(cookie)
+
+  if (!session?.adminId) {
+    return null
+  }
+
+  return { isAuth: true, adminId: session.adminId, role: session.role }
+})
+
 export const getAdmin = cache(async (): Promise<Admin | null> => {
   const session = await verifyAdminSession()
   if (!session) return null
@@ -73,5 +85,30 @@ export const checkAdminAccess = cache(async (): Promise<boolean> => {
     return !!session?.adminId
   } catch {
     return false
+  }
+})
+
+// Non-redirecting version of getAdmin for page components (to avoid redirect issues in Next.js 15)
+export const getAdminForPage = cache(async (): Promise<Admin | null> => {
+  const session = await checkAdminSession()
+  if (!session) return null
+
+  try {
+    const supabase = await createClient()
+    const { data: admin, error } = await supabase
+      .from('admins')
+      .select('id, email, name, role, created_at, updated_at')
+      .eq('id', session.adminId)
+      .single()
+
+    if (error) {
+      console.error('Failed to fetch admin:', error)
+      return null
+    }
+
+    return admin as Admin
+  } catch (error) {
+    console.error('Failed to fetch admin:', error)
+    return null
   }
 })
